@@ -15,19 +15,31 @@ graph = build_graph()
 
 
 def _thread_config(chat_id: int) -> dict:
-    """Конфиг LangGraph: одна ветка диалога на один чат."""
     return {"configurable": {"thread_id": str(chat_id)}}
 
 
-def _extract_input(message: Message) -> dict:
-    """Разобрать сообщение Telegram в структурированный ввод."""
+async def _extract_input(message: Message) -> dict:
+    """Разобрать сообщение в структурированный ввод.
+
+    Если есть фото — скачиваем его в память, чтобы передать в граф.
+    """
     input_text = message.text or message.caption or None
     input_photo_file_id = None
+    input_photo_bytes = None
     input_location = None
 
     if message.photo:
-        # Последний элемент — самый большой размер
         input_photo_file_id = message.photo[-1].file_id
+        try:
+            # download() возвращает io.BytesIO
+            buffer = await message.bot.download(input_photo_file_id)
+            input_photo_bytes = buffer.read()
+            logger.info(
+                "Скачано фото file_id=%s размер=%d байт",
+                input_photo_file_id, len(input_photo_bytes),
+            )
+        except Exception:
+            logger.exception("Не удалось скачать фото из Telegram")
 
     if message.location:
         input_location = {
@@ -38,17 +50,17 @@ def _extract_input(message: Message) -> dict:
     return {
         "input_text": input_text,
         "input_photo_file_id": input_photo_file_id,
+        "input_photo_bytes": input_photo_bytes,
         "input_location": input_location,
     }
 
 
 @router.message()
 async def handle_message(message: Message) -> None:
-    """Единый обработчик всех сообщений: текст, фото, локация."""
+    """Единый обработчик всех сообщений."""
     user = message.from_user
-    parsed = _extract_input(message)
+    parsed = await _extract_input(message)
 
-    # Человеческое представление для истории сообщений
     if parsed["input_text"]:
         human_content = parsed["input_text"]
     elif parsed["input_photo_file_id"]:
@@ -74,7 +86,6 @@ async def handle_message(message: Message) -> None:
         await message.answer("Что-то пошло не так. Попробуйте ещё раз.")
         return
 
-    # Находим последнее сообщение ассистента
     reply_text = ""
     for msg in reversed(result["messages"]):
         if msg.__class__.__name__ == "AIMessage":

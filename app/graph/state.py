@@ -24,6 +24,7 @@ class BotState(TypedDict, total=False):
     # Хранит структурированное представление последнего входящего сообщения.
     input_text: str | None
     input_photo_file_id: str | None
+    input_photo_bytes: bytes | None   # ← новое
     input_location: dict | None
 
     # Состояние диалога

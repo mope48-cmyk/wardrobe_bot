@@ -6,11 +6,10 @@ from langchain_core.messages import AIMessage
 
 from app.db.repository import add_item
 from app.graph.state import BotState
+from app.services.vision import classify_clothing
 
 logger = logging.getLogger(__name__)
 
-
-# ---------- Статические команды ----------
 
 WELCOME_TEXT = (
     "Привет! Я помогу каталогизировать твой гардероб "
@@ -25,7 +24,7 @@ WELCOME_TEXT = (
 
 HELP_TEXT = (
     "Что я умею:\n\n"
-    "• /add — добавить вещь. Пришлите фото, затем отвечу на несколько вопросов.\n\n"
+    "• /add — добавить вещь. Пришлите фото, я попробую распознать категорию и тип.\n\n"
     "• /list — показать все вещи в вашем гардеробе.\n\n"
     "• /outfit — подобрать комплект по погоде.\n\n"
     "• /cancel — отменить текущий диалог."
@@ -33,54 +32,38 @@ HELP_TEXT = (
 
 
 async def start_node(state: BotState) -> dict:
-    """Ответ на /start. Сбрасывает текущий диалог."""
     logger.info("start_node: user_id=%s", state.get("user_id"))
     return {
         "messages": [AIMessage(content=WELCOME_TEXT)],
-        "intent": None,
-        "step": None,
-        "draft_item": None,
+        "intent": None, "step": None, "draft_item": None,
     }
 
 
 async def help_node(state: BotState) -> dict:
-    """Ответ на /help."""
     return {"messages": [AIMessage(content=HELP_TEXT)]}
 
 
 async def cancel_node(state: BotState) -> dict:
-    """Отмена текущего диалога."""
     return {
         "messages": [AIMessage(content="Хорошо, отменил. Что делаем дальше?")],
-        "intent": None,
-        "step": None,
-        "draft_item": None,
+        "intent": None, "step": None, "draft_item": None,
     }
 
 
 async def fallback_node(state: BotState) -> dict:
-    """Неизвестный ввод."""
-    return {
-        "messages": [
-            AIMessage(content="Не понял. Наберите /help, чтобы увидеть команды.")
-        ],
-    }
+    return {"messages": [AIMessage(content="Не понял. Наберите /help.")]}
 
 
 async def stub_node(state: BotState) -> dict:
-    """Заглушка для команд, которые появятся позже (/list, /outfit)."""
-    return {
-        "messages": [AIMessage(content="Эта команда появится на следующем этапе.")],
-    }
+    return {"messages": [AIMessage(content="Эта команда появится позже.")]}
 
 
-# ---------- Сценарий /add ----------
+# ---------- /add ----------
 
 VALID_CATEGORIES = {"верх", "низ", "обувь", "аксессуар"}
 VALID_FORMAL = {"casual", "business", "sport"}
 VALID_SEASON = {"лето", "демисезон", "зима", "универсальная"}
 
-# Какой шаг → какое поле в draft_item сохраняем
 STEP_TO_FIELD = {
     "awaiting_category": "category",
     "awaiting_type": "type",
@@ -91,16 +74,12 @@ STEP_TO_FIELD = {
     "awaiting_season": "season",
 }
 
-# Текущий шаг → (следующий шаг, вопрос)
 NEXT_STEP = {
     "awaiting_category": (
         "awaiting_type",
         "Уточните тип вещи (например: футболка, джинсы, куртка, кроссовки):",
     ),
-    "awaiting_type": (
-        "awaiting_color",
-        "Какого цвета вещь?",
-    ),
+    "awaiting_type": ("awaiting_color", "Какого цвета вещь?"),
     "awaiting_color": (
         "awaiting_warmth",
         "Насколько вещь тёплая? Оцените от 1 (очень лёгкая) до 5 (очень тёплая):",
@@ -117,27 +96,22 @@ NEXT_STEP = {
         "awaiting_season",
         "Для какого сезона? Варианты: лето, демисезон, зима, универсальная:",
     ),
-    # awaiting_season — последний шаг, обрабатывается отдельно
 }
 
 
 def _validate_answer(step: str, text: str) -> tuple[bool, object, str]:
-    """Проверить ответ пользователя.
-
-    Возвращает (valid, parsed_value, error_message).
-    """
     text = text.strip()
     lower = text.lower()
 
     if step == "awaiting_category":
         if lower in VALID_CATEGORIES:
             return True, lower, ""
-        return False, None, "Пожалуйста, выберите: верх, низ, обувь или аксессуар."
+        return False, None, "Выберите: верх, низ, обувь или аксессуар."
 
     if step == "awaiting_type":
         if len(text) >= 2:
             return True, text, ""
-        return False, None, "Слишком коротко. Напишите название типа вещи."
+        return False, None, "Напишите название типа вещи."
 
     if step == "awaiting_color":
         if len(text) >= 2:
@@ -174,47 +148,169 @@ def _validate_answer(step: str, text: str) -> tuple[bool, object, str]:
 
 
 async def add_start_node(state: BotState) -> dict:
-    """/add — начало добавления вещи."""
     return {
         "messages": [AIMessage(content="Пришлите, пожалуйста, фотографию вещи.")],
-        "intent": "add",
-        "step": "awaiting_photo",
-        "draft_item": {},
+        "intent": "add", "step": "awaiting_photo", "draft_item": {},
     }
 
 
 async def add_expect_photo_node(state: BotState) -> dict:
-    """Пользователь написал текст вместо фото."""
     return {
         "messages": [
-            AIMessage(content="Жду фотографию вещи. Или наберите /cancel для отмены.")
+            AIMessage(content="Жду фотографию вещи. Или /cancel для отмены.")
         ],
     }
 
 
 async def add_photo_node(state: BotState) -> dict:
-    """Фото получено — сохраняем file_id, переходим к категории."""
+    """Фото получено: распознаём категорию, тип и цвет."""
     file_id = state.get("input_photo_file_id")
+    image_bytes = state.get("input_photo_bytes")
+
     draft = dict(state.get("draft_item") or {})
     draft["photo_file_id"] = file_id
 
+    if not image_bytes:
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        "Не удалось обработать фото.\n\n"
+                        "Что это за вещь? Напишите: <b>верх</b>, <b>низ</b>, "
+                        "<b>обувь</b> или <b>аксессуар</b>."
+                    )
+                )
+            ],
+            "step": "awaiting_category",
+            "draft_item": draft,
+        }
+
+    result = await classify_clothing(image_bytes)
+
+    # Цвет всегда есть — даже если CLIP не смог распознать вещь
+    draft["predicted_color"] = result.get("color")
+
+    if not result.get("ok") or result.get("category") == "другое":
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        "Не смог распознать вещь на фото.\n\n"
+                        "Что это за вещь? Напишите: <b>верх</b>, <b>низ</b>, "
+                        "<b>обувь</b> или <b>аксессуар</b>."
+                    )
+                )
+            ],
+            "step": "awaiting_category",
+            "draft_item": draft,
+        }
+
+    draft["predicted_category"] = result["category"]
+    draft["predicted_type"] = result["type"]
+    draft["confidence"] = result["confidence"]
+
+    confidence_pct = int(result["confidence"] * 100)
     return {
         "messages": [
             AIMessage(
                 content=(
-                    "Отлично, фото получил.\n\n"
-                    "Что это за вещь? Напишите категорию: "
-                    "<b>верх</b>, <b>низ</b>, <b>обувь</b> или <b>аксессуар</b>."
+                    f"Похоже, это <b>{result['type']}</b> "
+                    f"(категория: <b>{result['category']}</b>, "
+                    f"цвет: <b>{result['color']}</b>, "
+                    f"уверенность: {confidence_pct}%).\n\n"
+                    "Всё верно? Ответьте <b>да</b> или <b>нет</b>."
                 )
             )
         ],
-        "step": "awaiting_category",
+        "step": "awaiting_confirm_category",
+        "draft_item": draft,
+    }
+
+    # Распознавание
+    result = await classify_clothing(image_bytes)
+
+    if not result.get("ok") or result["category"] == "другое":
+        # Распознавание не удалось — ручной ввод
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        "Не смог распознать вещь на фото.\n\n"
+                        "Что это за вещь? Напишите: <b>верх</b>, <b>низ</b>, "
+                        "<b>обувь</b> или <b>аксессуар</b>."
+                    )
+                )
+            ],
+            "step": "awaiting_category",
+            "draft_item": draft,
+        }
+
+    # Сохраняем предсказание в черновик
+    draft["predicted_category"] = result["category"]
+    draft["predicted_type"] = result["type"]
+    draft["confidence"] = result["confidence"]
+
+    confidence_pct = int(result["confidence"] * 100)
+    return {
+        "messages": [
+            AIMessage(
+                content=(
+                    f"Похоже, это <b>{result['type']}</b> "
+                    f"(категория: <b>{result['category']}</b>, "
+                    f"уверенность: {confidence_pct}%).\n\n"
+                    "Всё верно? Ответьте <b>да</b> или <b>нет</b>."
+                )
+            )
+        ],
+        "step": "awaiting_confirm_category",
         "draft_item": draft,
     }
 
 
+async def add_confirm_category_node(state: BotState) -> dict:
+    """Обработка подтверждения предсказания CLIP (категория, тип, цвет)."""
+    text = (state.get("input_text") or "").strip().lower()
+    draft = dict(state.get("draft_item") or {})
+
+    if text in ("да", "yes", "верно", "ага", "ok"):
+        draft["category"] = draft["predicted_category"]
+        draft["type"] = draft["predicted_type"]
+        draft["color"] = draft.get("predicted_color") or ""
+
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        "Отлично!\n\n"
+                        "Насколько вещь тёплая? Оцените от 1 (очень лёгкая) "
+                        "до 5 (очень тёплая):"
+                    )
+                )
+            ],
+            "step": "awaiting_warmth",
+            "draft_item": draft,
+        }
+
+    if text in ("нет", "no", "неверно"):
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        "Хорошо. Напишите категорию: <b>верх</b>, <b>низ</b>, "
+                        "<b>обувь</b> или <b>аксессуар</b>."
+                    )
+                )
+            ],
+            "step": "awaiting_category",
+            "draft_item": draft,
+        }
+
+    return {
+        "messages": [AIMessage(content="Ответьте <b>да</b> или <b>нет</b>.")],
+    }
+
+
 async def add_attribute_node(state: BotState) -> dict:
-    """Обработать ответ пользователя на текущем шаге."""
     step = state.get("step")
     text = state.get("input_text") or ""
 
@@ -227,7 +323,7 @@ async def add_attribute_node(state: BotState) -> dict:
     draft = dict(state.get("draft_item") or {})
     draft[STEP_TO_FIELD[step]] = value
 
-    # Последний шаг — сохраняем вещь в БД
+    # Последний шаг — сохраняем
     if step == "awaiting_season":
         try:
             await add_item(
@@ -245,10 +341,8 @@ async def add_attribute_node(state: BotState) -> dict:
         except Exception as e:
             logger.exception("Ошибка сохранения вещи")
             return {
-                "messages": [AIMessage(content=f"Не удалось сохранить вещь: {e}")],
-                "step": None,
-                "draft_item": None,
-                "intent": None,
+                "messages": [AIMessage(content=f"Не удалось сохранить: {e}")],
+                "step": None, "draft_item": None, "intent": None,
             }
 
         return {
@@ -267,12 +361,9 @@ async def add_attribute_node(state: BotState) -> dict:
                     )
                 )
             ],
-            "step": None,
-            "draft_item": None,
-            "intent": None,
+            "step": None, "draft_item": None, "intent": None,
         }
 
-    # Обычный шаг — сохраняем и спрашиваем следующее
     next_step, question = NEXT_STEP[step]
     return {
         "messages": [AIMessage(content=question)],
