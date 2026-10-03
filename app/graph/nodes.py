@@ -163,7 +163,7 @@ async def add_expect_photo_node(state: BotState) -> dict:
 
 
 async def add_photo_node(state: BotState) -> dict:
-    """Фото получено: распознаём категорию, тип и цвет."""
+    """Фото получено: распознаём и предлагаем все атрибуты сразу."""
     file_id = state.get("input_photo_file_id")
     image_bytes = state.get("input_photo_bytes")
 
@@ -184,6 +184,58 @@ async def add_photo_node(state: BotState) -> dict:
             "step": "awaiting_category",
             "draft_item": draft,
         }
+
+    result = await classify_clothing(image_bytes)
+
+    if not result.get("ok") or result.get("category") == "другое":
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        "Не смог распознать вещь на фото.\n\n"
+                        "Что это за вещь? Напишите: <b>верх</b>, <b>низ</b>, "
+                        "<b>обувь</b> или <b>аксессуар</b>."
+                    )
+                )
+            ],
+            "step": "awaiting_category",
+            "draft_item": draft,
+        }
+
+    # Сохраняем всё предсказание в draft
+    draft["predicted_category"] = result["category"]
+    draft["predicted_type"] = result["type"]
+    draft["predicted_color"] = result["color"]
+    draft["predicted_warmth"] = result["warmth_level"]
+    draft["predicted_waterproof"] = result["waterproof"]
+    draft["predicted_formal"] = result["formal_level"]
+    draft["predicted_season"] = result["season"]
+    draft["confidence"] = result["confidence"]
+
+    pct = int(result["confidence"] * 100)
+    waterproof_str = "да" if result["waterproof"] else "нет"
+
+    return {
+        "messages": [
+            AIMessage(
+                content=(
+                    "Я распознал вещь. Проверьте, всё ли верно:\n\n"
+                    f"• Категория: <b>{result['category']}</b>\n"
+                    f"• Тип: <b>{result['type']}</b>\n"
+                    f"• Цвет: <b>{result['color']}</b>\n"
+                    f"• Тепло: <b>{result['warmth_level']}/5</b>\n"
+                    f"• Водонепроницаемая: <b>{waterproof_str}</b>\n"
+                    f"• Стиль: <b>{result['formal_level']}</b>\n"
+                    f"• Сезон: <b>{result['season']}</b>\n\n"
+                    f"<i>Уверенность распознавания: {pct}%</i>\n\n"
+                    "Если всё верно — ответьте <b>да</b>, и я сразу сохраню вещь.\n"
+                    "Если нужно исправить — ответьте <b>нет</b> и введите всё вручную."
+                )
+            )
+        ],
+        "step": "awaiting_confirm_category",
+        "draft_item": draft,
+    }
 
     result = await classify_clothing(image_bytes)
 
@@ -268,36 +320,67 @@ async def add_photo_node(state: BotState) -> dict:
 
 
 async def add_confirm_category_node(state: BotState) -> dict:
-    """Обработка подтверждения предсказания CLIP (категория, тип, цвет)."""
+    """Подтверждение всех предсказанных атрибутов и сохранение вещи."""
     text = (state.get("input_text") or "").strip().lower()
     draft = dict(state.get("draft_item") or {})
 
-    if text in ("да", "yes", "верно", "ага", "ok"):
+    if text in ("да", "yes", "верно", "ага", "ok", "+"):
+        # Переносим всё предсказание в финальные поля
         draft["category"] = draft["predicted_category"]
         draft["type"] = draft["predicted_type"]
         draft["color"] = draft.get("predicted_color") or ""
+        draft["warmth_level"] = draft["predicted_warmth"]
+        draft["waterproof"] = draft["predicted_waterproof"]
+        draft["formal_level"] = draft["predicted_formal"]
+        draft["season"] = draft["predicted_season"]
 
+        try:
+            await add_item(
+                user_id=state["user_id"],
+                photo_file_id=draft["photo_file_id"],
+                category=draft["category"],
+                type=draft["type"],
+                color=draft["color"],
+                material="",
+                warmth_level=draft["warmth_level"],
+                waterproof=draft["waterproof"],
+                formal_level=draft["formal_level"],
+                season=draft["season"],
+            )
+        except Exception as e:
+            logger.exception("Ошибка сохранения вещи")
+            return {
+                "messages": [AIMessage(content=f"Не удалось сохранить: {e}")],
+                "step": None, "draft_item": None, "intent": None,
+            }
+
+        waterproof_str = "да" if draft["waterproof"] else "нет"
         return {
             "messages": [
                 AIMessage(
                     content=(
-                        "Отлично!\n\n"
-                        "Насколько вещь тёплая? Оцените от 1 (очень лёгкая) "
-                        "до 5 (очень тёплая):"
+                        "Готово! Сохранил вещь:\n"
+                        f"• {draft['category']} / {draft['type']}\n"
+                        f"• цвет: {draft['color']}\n"
+                        f"• тепло: {draft['warmth_level']}/5\n"
+                        f"• водонепроницаемая: {waterproof_str}\n"
+                        f"• стиль: {draft['formal_level']}\n"
+                        f"• сезон: {draft['season']}\n\n"
+                        "Добавьте ещё вещь командой /add."
                     )
                 )
             ],
-            "step": "awaiting_warmth",
-            "draft_item": draft,
+            "step": None, "draft_item": None, "intent": None,
         }
 
-    if text in ("нет", "no", "неверно"):
+    if text in ("нет", "no", "неверно", "-"):
         return {
             "messages": [
                 AIMessage(
                     content=(
-                        "Хорошо. Напишите категорию: <b>верх</b>, <b>низ</b>, "
-                        "<b>обувь</b> или <b>аксессуар</b>."
+                        "Хорошо, вводим вручную.\n\n"
+                        "Категория: <b>верх</b>, <b>низ</b>, <b>обувь</b> "
+                        "или <b>аксессуар</b>?"
                     )
                 )
             ],
@@ -306,7 +389,14 @@ async def add_confirm_category_node(state: BotState) -> dict:
         }
 
     return {
-        "messages": [AIMessage(content="Ответьте <b>да</b> или <b>нет</b>.")],
+        "messages": [
+            AIMessage(
+                content=(
+                    "Ответьте <b>да</b> (сохранить) или <b>нет</b> "
+                    "(ввести заново)."
+                )
+            )
+        ],
     }
 
 
