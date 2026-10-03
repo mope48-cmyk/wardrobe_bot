@@ -9,6 +9,7 @@ from aiogram.enums import ParseMode
 
 from app.bot.handlers import router
 from app.config import settings
+from app.db.database import init_db
 
 
 def setup_logging() -> None:
@@ -24,8 +25,9 @@ async def main() -> None:
     setup_logging()
     logger = logging.getLogger(__name__)
 
-    # DefaultBotProperties задаёт parse_mode по умолчанию для всех сообщений.
-    # ParseMode.HTML позволяет использовать <b>, <i>, <code> в текстах.
+    # Инициализация БД: создаём таблицы, если их нет
+    await init_db()
+
     bot = Bot(
         token=settings.BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
@@ -36,11 +38,7 @@ async def main() -> None:
 
     logger.info("Бот запускается. Нажмите Ctrl+C для остановки.")
 
-    # Удаляем старые обновления (накопившиеся, пока бот был выключен),
-    # чтобы не обрабатывать их после запуска.
     await bot.delete_webhook(drop_pending_updates=True)
-
-    # start_polling — циклически опрашивает Telegram на новые сообщения.
     await dp.start_polling(bot)
 
 
