@@ -4,27 +4,278 @@ import logging
 
 from langchain_core.messages import AIMessage
 
+from app.db.repository import add_item
 from app.graph.state import BotState
 
 logger = logging.getLogger(__name__)
 
 
-async def echo_node(state: BotState) -> dict:
-    """Временный узел-эхо.
+# ---------- Статические команды ----------
 
-    Берёт последнее сообщение пользователя и возвращает его же
-    с префиксом. Используется, чтобы проверить, что граф и память
-    работают корректно.
-    """
-    last_message = state["messages"][-1]
-    user_text = last_message.content if hasattr(last_message, "content") else ""
+WELCOME_TEXT = (
+    "Привет! Я помогу каталогизировать твой гардероб "
+    "и подбирать одежду по погоде.\n\n"
+    "Доступные команды:\n"
+    "/add — добавить вещь\n"
+    "/list — показать гардероб\n"
+    "/outfit — подобрать комплект по погоде\n"
+    "/help — справка\n"
+    "/cancel — отменить текущее действие"
+)
 
-    logger.info("echo_node: user_id=%s text=%r", state["user_id"], user_text)
+HELP_TEXT = (
+    "Что я умею:\n\n"
+    "• /add — добавить вещь. Пришлите фото, затем отвечу на несколько вопросов.\n\n"
+    "• /list — показать все вещи в вашем гардеробе.\n\n"
+    "• /outfit — подобрать комплект по погоде.\n\n"
+    "• /cancel — отменить текущий диалог."
+)
 
-    # Возвращаем словарь — LangGraph сам смёржит его с текущим состоянием.
-    # Поле messages объединится с существующим списком благодаря add_messages.
+
+async def start_node(state: BotState) -> dict:
+    """Ответ на /start. Сбрасывает текущий диалог."""
+    logger.info("start_node: user_id=%s", state.get("user_id"))
+    return {
+        "messages": [AIMessage(content=WELCOME_TEXT)],
+        "intent": None,
+        "step": None,
+        "draft_item": None,
+    }
+
+
+async def help_node(state: BotState) -> dict:
+    """Ответ на /help."""
+    return {"messages": [AIMessage(content=HELP_TEXT)]}
+
+
+async def cancel_node(state: BotState) -> dict:
+    """Отмена текущего диалога."""
+    return {
+        "messages": [AIMessage(content="Хорошо, отменил. Что делаем дальше?")],
+        "intent": None,
+        "step": None,
+        "draft_item": None,
+    }
+
+
+async def fallback_node(state: BotState) -> dict:
+    """Неизвестный ввод."""
     return {
         "messages": [
-            AIMessage(content=f"Эхо: {user_text}")
-        ]
+            AIMessage(content="Не понял. Наберите /help, чтобы увидеть команды.")
+        ],
+    }
+
+
+async def stub_node(state: BotState) -> dict:
+    """Заглушка для команд, которые появятся позже (/list, /outfit)."""
+    return {
+        "messages": [AIMessage(content="Эта команда появится на следующем этапе.")],
+    }
+
+
+# ---------- Сценарий /add ----------
+
+VALID_CATEGORIES = {"верх", "низ", "обувь", "аксессуар"}
+VALID_FORMAL = {"casual", "business", "sport"}
+VALID_SEASON = {"лето", "демисезон", "зима", "универсальная"}
+
+# Какой шаг → какое поле в draft_item сохраняем
+STEP_TO_FIELD = {
+    "awaiting_category": "category",
+    "awaiting_type": "type",
+    "awaiting_color": "color",
+    "awaiting_warmth": "warmth_level",
+    "awaiting_waterproof": "waterproof",
+    "awaiting_formal": "formal_level",
+    "awaiting_season": "season",
+}
+
+# Текущий шаг → (следующий шаг, вопрос)
+NEXT_STEP = {
+    "awaiting_category": (
+        "awaiting_type",
+        "Уточните тип вещи (например: футболка, джинсы, куртка, кроссовки):",
+    ),
+    "awaiting_type": (
+        "awaiting_color",
+        "Какого цвета вещь?",
+    ),
+    "awaiting_color": (
+        "awaiting_warmth",
+        "Насколько вещь тёплая? Оцените от 1 (очень лёгкая) до 5 (очень тёплая):",
+    ),
+    "awaiting_warmth": (
+        "awaiting_waterproof",
+        "Вещь водонепроницаемая? Напишите да или нет:",
+    ),
+    "awaiting_waterproof": (
+        "awaiting_formal",
+        "Для какого случая вещь? Варианты: casual, business, sport:",
+    ),
+    "awaiting_formal": (
+        "awaiting_season",
+        "Для какого сезона? Варианты: лето, демисезон, зима, универсальная:",
+    ),
+    # awaiting_season — последний шаг, обрабатывается отдельно
+}
+
+
+def _validate_answer(step: str, text: str) -> tuple[bool, object, str]:
+    """Проверить ответ пользователя.
+
+    Возвращает (valid, parsed_value, error_message).
+    """
+    text = text.strip()
+    lower = text.lower()
+
+    if step == "awaiting_category":
+        if lower in VALID_CATEGORIES:
+            return True, lower, ""
+        return False, None, "Пожалуйста, выберите: верх, низ, обувь или аксессуар."
+
+    if step == "awaiting_type":
+        if len(text) >= 2:
+            return True, text, ""
+        return False, None, "Слишком коротко. Напишите название типа вещи."
+
+    if step == "awaiting_color":
+        if len(text) >= 2:
+            return True, text, ""
+        return False, None, "Напишите цвет вещи текстом."
+
+    if step == "awaiting_warmth":
+        try:
+            n = int(text)
+            if 1 <= n <= 5:
+                return True, n, ""
+        except ValueError:
+            pass
+        return False, None, "Введите число от 1 до 5."
+
+    if step == "awaiting_waterproof":
+        if lower in ("да", "yes", "true", "1"):
+            return True, True, ""
+        if lower in ("нет", "no", "false", "0"):
+            return True, False, ""
+        return False, None, "Ответьте да или нет."
+
+    if step == "awaiting_formal":
+        if lower in VALID_FORMAL:
+            return True, lower, ""
+        return False, None, "Выберите: casual, business или sport."
+
+    if step == "awaiting_season":
+        if lower in VALID_SEASON:
+            return True, lower, ""
+        return False, None, "Выберите: лето, демисезон, зима или универсальная."
+
+    return False, None, "Неизвестный шаг."
+
+
+async def add_start_node(state: BotState) -> dict:
+    """/add — начало добавления вещи."""
+    return {
+        "messages": [AIMessage(content="Пришлите, пожалуйста, фотографию вещи.")],
+        "intent": "add",
+        "step": "awaiting_photo",
+        "draft_item": {},
+    }
+
+
+async def add_expect_photo_node(state: BotState) -> dict:
+    """Пользователь написал текст вместо фото."""
+    return {
+        "messages": [
+            AIMessage(content="Жду фотографию вещи. Или наберите /cancel для отмены.")
+        ],
+    }
+
+
+async def add_photo_node(state: BotState) -> dict:
+    """Фото получено — сохраняем file_id, переходим к категории."""
+    file_id = state.get("input_photo_file_id")
+    draft = dict(state.get("draft_item") or {})
+    draft["photo_file_id"] = file_id
+
+    return {
+        "messages": [
+            AIMessage(
+                content=(
+                    "Отлично, фото получил.\n\n"
+                    "Что это за вещь? Напишите категорию: "
+                    "<b>верх</b>, <b>низ</b>, <b>обувь</b> или <b>аксессуар</b>."
+                )
+            )
+        ],
+        "step": "awaiting_category",
+        "draft_item": draft,
+    }
+
+
+async def add_attribute_node(state: BotState) -> dict:
+    """Обработать ответ пользователя на текущем шаге."""
+    step = state.get("step")
+    text = state.get("input_text") or ""
+
+    logger.info("add_attribute_node: step=%s text=%r", step, text)
+
+    valid, value, error = _validate_answer(step, text)
+    if not valid:
+        return {"messages": [AIMessage(content=error)]}
+
+    draft = dict(state.get("draft_item") or {})
+    draft[STEP_TO_FIELD[step]] = value
+
+    # Последний шаг — сохраняем вещь в БД
+    if step == "awaiting_season":
+        try:
+            await add_item(
+                user_id=state["user_id"],
+                photo_file_id=draft["photo_file_id"],
+                category=draft["category"],
+                type=draft["type"],
+                color=draft["color"],
+                material="",
+                warmth_level=draft["warmth_level"],
+                waterproof=draft["waterproof"],
+                formal_level=draft["formal_level"],
+                season=draft["season"],
+            )
+        except Exception as e:
+            logger.exception("Ошибка сохранения вещи")
+            return {
+                "messages": [AIMessage(content=f"Не удалось сохранить вещь: {e}")],
+                "step": None,
+                "draft_item": None,
+                "intent": None,
+            }
+
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        "Готово! Сохранил вещь:\n"
+                        f"• {draft['category']} / {draft['type']}\n"
+                        f"• цвет: {draft['color']}\n"
+                        f"• тепло: {draft['warmth_level']}/5\n"
+                        f"• водонепроницаемая: "
+                        f"{'да' if draft['waterproof'] else 'нет'}\n"
+                        f"• стиль: {draft['formal_level']}\n"
+                        f"• сезон: {draft['season']}\n\n"
+                        "Добавьте ещё вещь командой /add."
+                    )
+                )
+            ],
+            "step": None,
+            "draft_item": None,
+            "intent": None,
+        }
+
+    # Обычный шаг — сохраняем и спрашиваем следующее
+    next_step, question = NEXT_STEP[step]
+    return {
+        "messages": [AIMessage(content=question)],
+        "step": next_step,
+        "draft_item": draft,
     }

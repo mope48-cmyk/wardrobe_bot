@@ -1,9 +1,8 @@
-"""Обработчики команд Telegram-бота."""
+"""Обработчики Telegram-бота."""
 
 import logging
 
 from aiogram import Router
-from aiogram.filters import Command
 from aiogram.types import Message
 from langchain_core.messages import HumanMessage
 
@@ -12,67 +11,61 @@ from app.graph.builder import build_graph
 logger = logging.getLogger(__name__)
 
 router = Router(name="main_router")
-
-# Граф строится один раз при импорте модуля и переиспользуется.
-# MemorySaver внутри сохраняет состояние между вызовами.
 graph = build_graph()
 
 
 def _thread_config(chat_id: int) -> dict:
-    """Конфиг для LangGraph: одна ветка диалога на один чат."""
+    """Конфиг LangGraph: одна ветка диалога на один чат."""
     return {"configurable": {"thread_id": str(chat_id)}}
 
 
-@router.message(Command("start"))
-async def cmd_start(message: Message) -> None:
-    """Обработчик команды /start."""
-    user = message.from_user
-    logger.info("Команда /start от user_id=%s", user.id if user else "unknown")
+def _extract_input(message: Message) -> dict:
+    """Разобрать сообщение Telegram в структурированный ввод."""
+    input_text = message.text or message.caption or None
+    input_photo_file_id = None
+    input_location = None
 
-    text = (
-        f"Привет, {user.first_name if user else 'друг'}!\n\n"
-        "Я помогу каталогизировать твой гардероб и подбирать одежду по погоде.\n\n"
-        "Доступные команды:\n"
-        "/add — добавить вещь\n"
-        "/list — показать гардероб\n"
-        "/outfit — подобрать комплект по погоде\n"
-        "/help — справка"
-    )
-    await message.answer(text)
+    if message.photo:
+        # Последний элемент — самый большой размер
+        input_photo_file_id = message.photo[-1].file_id
 
+    if message.location:
+        input_location = {
+            "lat": message.location.latitude,
+            "lon": message.location.longitude,
+        }
 
-@router.message(Command("help"))
-async def cmd_help(message: Message) -> None:
-    """Обработчик команды /help."""
-    text = (
-        "Что я умею:\n\n"
-        "• /add — добавление вещи. Пришлите фото, я попробую распознать "
-        "категорию и тип, затем задам несколько уточняющих вопросов.\n\n"
-        "• /list — показать все вещи в вашем гардеробе.\n\n"
-        "• /outfit — подобрать комплект. Я уточню ваше местоположение и повод, "
-        "посмотрю прогноз погоды и выберу подходящие вещи.\n\n"
-        "Команды /add, /list и /outfit появятся на следующих этапах."
-    )
-    await message.answer(text)
+    return {
+        "input_text": input_text,
+        "input_photo_file_id": input_photo_file_id,
+        "input_location": input_location,
+    }
 
 
 @router.message()
-async def fallback(message: Message) -> None:
-    """Любое сообщение, не попавшее в команды, уходит в LangGraph."""
-    if not message.text:
-        await message.answer("Пока я умею работать только с текстом.")
-        return
-
+async def handle_message(message: Message) -> None:
+    """Единый обработчик всех сообщений: текст, фото, локация."""
     user = message.from_user
-    config = _thread_config(message.chat.id)
+    parsed = _extract_input(message)
 
-    # Формируем входное состояние. messages — список новых сообщений
-    # (add_messages смёржит их с историей).
+    # Человеческое представление для истории сообщений
+    if parsed["input_text"]:
+        human_content = parsed["input_text"]
+    elif parsed["input_photo_file_id"]:
+        human_content = "[фото]"
+    elif parsed["input_location"]:
+        human_content = "[геолокация]"
+    else:
+        human_content = "[неизвестный ввод]"
+
     input_state = {
-        "messages": [HumanMessage(content=message.text)],
+        "messages": [HumanMessage(content=human_content)],
         "user_id": user.id if user else 0,
         "chat_id": message.chat.id,
+        **parsed,
     }
+
+    config = _thread_config(message.chat.id)
 
     try:
         result = await graph.ainvoke(input_state, config=config)
@@ -81,10 +74,10 @@ async def fallback(message: Message) -> None:
         await message.answer("Что-то пошло не так. Попробуйте ещё раз.")
         return
 
-    # Достаём последнее сообщение ассистента
+    # Находим последнее сообщение ассистента
     reply_text = ""
     for msg in reversed(result["messages"]):
-        if hasattr(msg, "content") and msg.__class__.__name__ == "AIMessage":
+        if msg.__class__.__name__ == "AIMessage":
             reply_text = msg.content
             break
 

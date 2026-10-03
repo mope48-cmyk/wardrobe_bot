@@ -5,34 +5,37 @@ from typing import Annotated, TypedDict
 from langgraph.graph.message import add_messages
 
 
-class BotState(TypedDict):
+class BotState(TypedDict, total=False):
     """Состояние диалога с пользователем.
 
-    Поля, которые заполняются постепенно, могут быть None,
-    пока соответствующий шаг диалога не начался.
+    total=False — все поля необязательные. Это упрощает работу:
+    не нужно каждый раз указывать все поля в input_state.
     """
 
-    # История сообщений. add_messages — специальный редьюсер LangGraph,
-    # который добавляет новые сообщения к существующему списку
-    # (а не перезаписывает его).
+    # История сообщений. add_messages добавляет новые сообщения
+    # к существующему списку (не перезаписывает).
     messages: Annotated[list, add_messages]
 
     # Идентификация
     user_id: int
     chat_id: int
 
-    # Текущее намерение и шаг диалога
-    intent: str | None      # add / list / outfit / help / None
-    step: str | None        # awaiting_photo, awaiting_category и т.д.
+    # Разобранный ввод пользователя (обновляется на каждом сообщении).
+    # Хранит структурированное представление последнего входящего сообщения.
+    input_text: str | None
+    input_photo_file_id: str | None
+    input_location: dict | None
 
-    # Черновик вещи, собираемой в /add
+    # Состояние диалога
+    intent: str | None
+    step: str | None
     draft_item: dict | None
 
-    # Данные для /outfit
-    location: dict | None   # {"lat": ..., "lon": ..., "city": ...}
+    # Для будущих сценариев (/outfit)
+    location: dict | None
     occasion: str | None
     weather: dict | None
     outfit: dict | None
 
-    # Ошибки (для отладки)
+    # Ошибки
     error: str | None
