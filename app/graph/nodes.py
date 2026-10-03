@@ -4,7 +4,7 @@ import logging
 
 from langchain_core.messages import AIMessage
 
-from app.db.repository import add_item
+from app.db.repository import add_item, get_items
 from app.graph.state import BotState
 from app.services.vision import classify_clothing
 
@@ -57,6 +57,55 @@ async def fallback_node(state: BotState) -> dict:
 async def stub_node(state: BotState) -> dict:
     return {"messages": [AIMessage(content="Эта команда появится позже.")]}
 
+async def list_node(state: BotState) -> dict:
+    """Показать все вещи пользователя."""
+    user_id = state["user_id"]
+    items = await get_items(user_id)
+
+    if not items:
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        "Ваш гардероб пока пуст.\n\n"
+                        "Добавьте первую вещь командой /add."
+                    )
+                )
+            ],
+            "step": None,
+            "intent": None,
+            "draft_item": None,
+        }
+
+    total = len(items)
+    messages: list[AIMessage] = [
+        AIMessage(content=f"В гардеробе <b>{total}</b> вещей:")
+    ]
+
+    for item in items:
+        waterproof_mark = "💧 " if item.waterproof else ""
+        caption = (
+            f"<b>{item.category} / {item.type}</b>\n"
+            f"цвет: {item.color}\n"
+            f"{waterproof_mark}тепло: {item.warmth_level}/5, "
+            f"стиль: {item.formal_level}, сезон: {item.season}"
+        )
+
+        # additional_kwargs — специальное поле LangChain-сообщений.
+        # Обработчик aiogram прочитает его и отправит фото вместо текста.
+        messages.append(
+            AIMessage(
+                content=caption,
+                additional_kwargs={"photo_file_id": item.photo_file_id},
+            )
+        )
+
+    return {
+        "messages": messages,
+        "step": None,
+        "intent": None,
+        "draft_item": None,
+    }
 
 # ---------- /add ----------
 

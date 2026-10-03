@@ -19,10 +19,7 @@ def _thread_config(chat_id: int) -> dict:
 
 
 async def _extract_input(message: Message) -> dict:
-    """Разобрать сообщение в структурированный ввод.
-
-    Если есть фото — скачиваем его в память, чтобы передать в граф.
-    """
+    """Разобрать сообщение Telegram в структурированный ввод."""
     input_text = message.text or message.caption or None
     input_photo_file_id = None
     input_photo_bytes = None
@@ -31,7 +28,6 @@ async def _extract_input(message: Message) -> dict:
     if message.photo:
         input_photo_file_id = message.photo[-1].file_id
         try:
-            # download() возвращает io.BytesIO
             buffer = await message.bot.download(input_photo_file_id)
             input_photo_bytes = buffer.read()
             logger.info(
@@ -53,6 +49,21 @@ async def _extract_input(message: Message) -> dict:
         "input_photo_bytes": input_photo_bytes,
         "input_location": input_location,
     }
+
+
+async def _send_ai_message(message: Message, ai_msg) -> None:
+    """Отправить одно сообщение ассистента: фото или текст."""
+    photo_file_id = None
+    if getattr(ai_msg, "additional_kwargs", None):
+        photo_file_id = ai_msg.additional_kwargs.get("photo_file_id")
+
+    if photo_file_id:
+        try:
+            await message.answer_photo(photo=photo_file_id, caption=ai_msg.content)
+            return
+        except Exception:
+            logger.exception("Не удалось отправить фото, шлю текстом")
+    await message.answer(ai_msg.content)
 
 
 @router.message()
@@ -86,13 +97,22 @@ async def handle_message(message: Message) -> None:
         await message.answer("Что-то пошло не так. Попробуйте ещё раз.")
         return
 
-    reply_text = ""
-    for msg in reversed(result["messages"]):
-        if msg.__class__.__name__ == "AIMessage":
-            reply_text = msg.content
-            break
+    all_messages = result["messages"]
 
-    if reply_text:
-        await message.answer(reply_text)
-    else:
+    # Ищем последнее сообщение пользователя, чтобы взять только свежие ответы
+    last_human_idx = -1
+    for i, m in enumerate(all_messages):
+        if m.__class__.__name__ == "HumanMessage":
+            last_human_idx = i
+
+    new_ai_messages = [
+        m for m in all_messages[last_human_idx + 1:]
+        if m.__class__.__name__ == "AIMessage"
+    ]
+
+    if not new_ai_messages:
         await message.answer("Нечего ответить.")
+        return
+
+    for ai_msg in new_ai_messages:
+        await _send_ai_message(message, ai_msg)
