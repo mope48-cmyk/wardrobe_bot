@@ -16,7 +16,7 @@ def route_condition(state: BotState) -> str:
     if first_word == "/cancel": return "cancel"
     if first_word == "/add": return "add_start"
     if first_word == "/list": return "list"
-    if first_word == "/outfit": return "stub"
+    if first_word == "/outfit": return "outfit_start"
 
     step = state.get("step")
 
@@ -24,7 +24,11 @@ def route_condition(state: BotState) -> str:
         if state.get("input_photo_file_id"):
             return "add_photo"
         return "add_expect_photo"
-
+     
+    if step == "awaiting_location":
+        return "outfit_location"
+    if step == "awaiting_occasion":
+        return "outfit_occasion"
     if step == "awaiting_confirm_category":
         return "add_confirm_category"
 
@@ -48,6 +52,9 @@ def build_graph():
     builder.add_node("fallback", nodes.fallback_node)
     builder.add_node("stub", nodes.stub_node)
     builder.add_node("list", nodes.list_node)
+    builder.add_node("outfit_start", nodes.outfit_start_node)
+    builder.add_node("outfit_location", nodes.outfit_location_node)
+    builder.add_node("outfit_occasion", nodes.outfit_occasion_node)
     builder.add_node("add_start", nodes.add_start_node)
     builder.add_node("add_expect_photo", nodes.add_expect_photo_node)
     builder.add_node("add_photo", nodes.add_photo_node)
@@ -61,6 +68,9 @@ def build_graph():
         {
             "start": "start", "help": "help", "cancel": "cancel",
             "fallback": "fallback", "stub": "stub", "list": "list",
+            "outfit_start": "outfit_start",
+            "outfit_location": "outfit_location",
+            "outfit_occasion": "outfit_occasion",
             "add_start": "add_start",
             "add_expect_photo": "add_expect_photo",
             "add_photo": "add_photo",
@@ -71,6 +81,7 @@ def build_graph():
 
     terminal_nodes = [
         "start", "help", "cancel", "fallback", "stub", "list",
+        "outfit_start", "outfit_location", "outfit_occasion",
         "add_start", "add_expect_photo", "add_photo",
         "add_confirm_category", "add_attribute",
     ]

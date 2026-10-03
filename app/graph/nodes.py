@@ -5,6 +5,8 @@ import logging
 from langchain_core.messages import AIMessage
 
 from app.db.repository import add_item, get_items
+from app.services.outfit import select_outfit
+from app.services.weather import geocode_city, get_weather
 from app.graph.state import BotState
 from app.services.vision import classify_clothing
 
@@ -508,4 +510,186 @@ async def add_attribute_node(state: BotState) -> dict:
         "messages": [AIMessage(content=question)],
         "step": next_step,
         "draft_item": draft,
+    }
+# ---------- /outfit ----------
+
+VALID_OCCASIONS = {"работа", "прогулка", "спорт", "встреча", "другое"}
+
+
+async def outfit_start_node(state: BotState) -> dict:
+    """/outfit — запрашиваем местоположение."""
+    return {
+        "messages": [
+            AIMessage(
+                content=(
+                    "Чтобы подобрать комплект, мне нужно знать, где вы "
+                    "находитесь.\n\n"
+                    "Отправьте <b>геолокацию</b> (скрепка → Геопозиция) "
+                    "или напишите название города."
+                )
+            )
+        ],
+        "intent": "outfit",
+        "step": "awaiting_location",
+        "draft_item": None,
+        "location": None,
+        "occasion": None,
+        "weather": None,
+        "outfit": None,
+    }
+
+
+async def outfit_location_node(state: BotState) -> dict:
+    """Обработка геолокации или названия города."""
+    loc = state.get("input_location")
+    text = (state.get("input_text") or "").strip()
+
+    if loc:
+        location = {"lat": loc["lat"], "lon": loc["lon"], "city": None}
+    elif text:
+        geo = await geocode_city(text)
+        if not geo:
+            return {
+                "messages": [
+                    AIMessage(
+                        content=(
+                            "Не смог найти этот город. Попробуйте ещё раз "
+                            "или отправьте геолокацию."
+                        )
+                    )
+                ],
+            }
+        location = geo
+    else:
+        return {
+            "messages": [
+                AIMessage(
+                    content="Жду геолокацию или название города. Или /cancel."
+                )
+            ],
+        }
+
+    return {
+        "messages": [
+            AIMessage(
+                content=(
+                    "Понял.\n\n"
+                    "Какой повод? Варианты: <b>работа</b>, <b>прогулка</b>, "
+                    "<b>спорт</b>, <b>встреча</b>, <b>другое</b>."
+                )
+            )
+        ],
+        "step": "awaiting_occasion",
+        "location": location,
+    }
+
+
+async def outfit_occasion_node(state: BotState) -> dict:
+    """Обработка повода, получение погоды, подбор и отправка."""
+    text = (state.get("input_text") or "").strip().lower()
+
+    if text not in VALID_OCCASIONS:
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        "Выберите: <b>работа</b>, <b>прогулка</b>, "
+                        "<b>спорт</b>, <b>встреча</b> или <b>другое</b>."
+                    )
+                )
+            ],
+        }
+
+    loc = state.get("location") or {}
+    if not loc:
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        "Что-то пошло не так с местоположением. "
+                        "Начните заново: /outfit."
+                    )
+                )
+            ],
+            "step": None, "intent": None,
+        }
+
+    weather = await get_weather(loc["lat"], loc["lon"])
+    if not weather:
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        "Не удалось получить погоду. "
+                        "Попробуйте позже или начните заново: /outfit."
+                    )
+                )
+            ],
+            "step": None, "intent": None, "location": None,
+        }
+
+    items = await get_items(state["user_id"])
+    if not items:
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        "Ваш гардероб пуст. Добавьте вещи через /add, "
+                        "затем повторите /outfit."
+                    )
+                )
+            ],
+            "step": None, "intent": None, "location": None,
+            "weather": weather,
+        }
+
+    outfit = select_outfit(list(items), weather, text)
+
+    city_str = f" ({loc['city']})" if loc.get("city") else ""
+    temp = weather["temp"]
+    desc = weather["description"]
+    header = (
+        f"Погода{city_str}: {desc}, {temp:.0f}°C.\n"
+        f"Повод: {text}."
+    )
+
+    if not outfit:
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        f"{header}\n\n"
+                        "К сожалению, в вашем гардеробе нет подходящих "
+                        "вещей. Добавьте их через /add."
+                    )
+                )
+            ],
+            "step": None, "intent": None, "location": None,
+            "weather": weather,
+        }
+
+    messages: list[AIMessage] = [
+        AIMessage(content=f"{header}\n\nВот что предлагаю надеть:")
+    ]
+
+    for category, item in outfit.items():
+        waterproof_mark = "💧 " if item.waterproof else ""
+        caption = (
+            f"<b>{item.category} / {item.type}</b>\n"
+            f"цвет: {item.color}\n"
+            f"{waterproof_mark}тепло: {item.warmth_level}/5, "
+            f"стиль: {item.formal_level}, сезон: {item.season}"
+        )
+        messages.append(
+            AIMessage(
+                content=caption,
+                additional_kwargs={"photo_file_id": item.photo_file_id},
+            )
+        )
+
+    return {
+        "messages": messages,
+        "step": None, "intent": None,
+        "location": None, "weather": weather,
+        "occasion": text,
     }
