@@ -385,6 +385,42 @@ EDIT_FIELD_LABEL = {
     "season": "Сезон (лето / демисезон / зима / универсальная)",
 }
 
+# Поля со свободным текстовым вводом
+TEXT_EDIT_FIELDS = {"type", "color"}
+
+# Поля с фиксированными вариантами.
+# Формат: field → [(подпись на кнопке, код для callback, значение для БД), ...]
+CHOICE_EDIT_FIELDS: dict[str, list[tuple[str, str, object]]] = {
+    "category": [
+        ("Верх", "top", "верх"),
+        ("Низ", "bottom", "низ"),
+        ("Обувь", "shoes", "обувь"),
+        ("Аксессуар", "accessory", "аксессуар"),
+    ],
+    "warmth": [
+        ("1", "1", 1),
+        ("2", "2", 2),
+        ("3", "3", 3),
+        ("4", "4", 4),
+        ("5", "5", 5),
+    ],
+    "waterproof": [
+        ("Да", "yes", True),
+        ("Нет", "no", False),
+    ],
+    "formal": [
+        ("Casual", "casual", "casual"),
+        ("Business", "business", "business"),
+        ("Sport", "sport", "sport"),
+    ],
+    "season": [
+        ("Лето", "summer", "лето"),
+        ("Демисезон", "demi", "демисезон"),
+        ("Зима", "winter", "зима"),
+        ("Универсальная", "universal", "универсальная"),
+    ],
+}
+
 
 def _validate_edit_field(
     field: str, text: str
@@ -517,9 +553,12 @@ async def list_edit_node(state: BotState) -> dict:
 
 
 async def list_edit_field_node(state: BotState) -> dict:
-    """Пользователь выбрал поле — просим ввести новое значение."""
+    """Пользователь выбрал поле.
+
+    Если поле из CHOICE_EDIT_FIELDS — показываем кнопки с вариантами.
+    Если поле из TEXT_EDIT_FIELDS — просим ввести текстом.
+    """
     text = (state.get("input_text") or "").strip()
-    # text выглядит как "list:edit:category"
     parts = text.split(":", 2)
     field = parts[2] if len(parts) == 3 else ""
 
@@ -546,20 +585,45 @@ async def list_edit_field_node(state: BotState) -> dict:
             "step": None, "intent": None,
         }
 
-    current_str = _field_value_str(item, field)
     label = EDIT_FIELD_LABEL[field]
+    current_str = _field_value_str(item, field)
 
-    caption = (
-        f"✏️ <b>{label}</b>\n\n"
-        f"Текущее значение: <b>{current_str}</b>\n\n"
-        "Введите новое значение текстом."
-    )
+    if field in CHOICE_EDIT_FIELDS:
+        # Кнопки с вариантами
+        buttons = CHOICE_EDIT_FIELDS[field]
+        rows: list[list[dict]] = []
+        row: list[dict] = []
+        for btn_label, code, _ in buttons:
+            row.append({
+                "text": btn_label,
+                "callback_data": f"list:set:{field}:{code}",
+            })
+            if len(row) == 3:
+                rows.append(row)
+                row = []
+        if row:
+            rows.append(row)
+        rows.append([{"text": "❌ Отмена", "callback_data": "list:edit:cancel"}])
+
+        caption = (
+            f"✏️ <b>{label}</b>\n\n"
+            f"Текущее значение: <b>{current_str}</b>\n\n"
+            "Выберите новое значение:"
+        )
+        next_step = "list_edit_choice"
+    else:
+        # Текстовый ввод (тип, цвет)
+        rows = [[{"text": "❌ Отмена", "callback_data": "list:edit:cancel"}]]
+        caption = (
+            f"✏️ <b>{label}</b>\n\n"
+            f"Текущее значение: <b>{current_str}</b>\n\n"
+            "Введите новое значение текстом."
+        )
+        next_step = "list_edit_input"
 
     additional: dict = {
         "photo_file_id": item.photo_file_id,
-        "inline_keyboard": [
-            [{"text": "❌ Отмена", "callback_data": "list:edit:cancel"}],
-        ],
+        "inline_keyboard": rows,
         "edit_mode": "caption",
     }
     if edit_message_id is not None:
@@ -567,13 +631,82 @@ async def list_edit_field_node(state: BotState) -> dict:
 
     return {
         "messages": [AIMessage(content=caption, additional_kwargs=additional)],
-        "step": "list_edit_input",
+        "step": next_step,
         "intent": "list",
         "list_ids": ids,
         "list_index": index,
         "edit_message_id": edit_message_id,
         "draft_item": {"edit_field": field},
     }
+
+
+async def list_edit_choice_node(state: BotState) -> dict:
+    """Применить выбранное значение из кнопки.
+
+    Приходит callback вида "list:set:category:top".
+    Проверка значения не нужна: мы сами задали список вариантов.
+    """
+    text = (state.get("input_text") or "").strip()
+    # "list:set:category:top" → ["list", "set", "category", "top"]
+    parts = text.split(":", 3)
+    if len(parts) != 4:
+        return {
+            "messages": [AIMessage(content="Ошибка выбора. Попробуйте снова.")],
+            "step": None, "intent": None,
+        }
+    _, _, field, code = parts
+
+    if field not in CHOICE_EDIT_FIELDS:
+        return {
+            "messages": [AIMessage(content="Неизвестное поле.")],
+            "step": None, "intent": None,
+        }
+
+    # Ищем значение по коду
+    value = None
+    for _, c, v in CHOICE_EDIT_FIELDS[field]:
+        if c == code:
+            value = v
+            break
+
+    if value is None:
+        return {
+            "messages": [AIMessage(content="Неверный выбор. Попробуйте снова.")],
+            "step": None, "intent": None,
+        }
+
+    ids = state.get("list_ids") or []
+    index = state.get("list_index") or 0
+    user_id = state["user_id"]
+
+    if not ids or index >= len(ids):
+        return {
+            "messages": [AIMessage(content="Нечего редактировать.")],
+            "step": None, "intent": None,
+        }
+
+    item_id = ids[index]
+    ok = await update_item_field(
+        item_id, user_id, EDIT_FIELD_TO_DB[field], value
+    )
+    if not ok:
+        return {
+            "messages": [
+                AIMessage(
+                    content="Не удалось сохранить изменение.",
+                    additional_kwargs=_kb(MENU_KEYBOARD),
+                )
+            ],
+            "step": None, "intent": None,
+            "list_ids": None, "list_index": 0,
+            "edit_message_id": None, "draft_item": None,
+        }
+
+    # Возвращаемся к просмотру той же вещи с обновлёнными данными
+    return await _render_current(
+        {**state, "draft_item": None},
+        edit_mode="caption",
+    )
 
 
 async def list_edit_save_node(state: BotState) -> dict:

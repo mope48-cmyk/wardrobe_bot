@@ -58,6 +58,8 @@ def route_condition(state: BotState) -> str:
         return "list_edit_cancel"
     if text.startswith("list:edit:"):
         return "list_edit_field"
+    if text.startswith("list:set:"):
+        return "list_edit_choice"
     if text == "list:delete":
         return "list_delete"
     if text == "list:delete_confirm":
@@ -133,6 +135,7 @@ def build_graph():
     builder.add_node("list_noop", nodes.list_noop_node)
     builder.add_node("list_edit", nodes.list_edit_node)
     builder.add_node("list_edit_field", nodes.list_edit_field_node)
+    builder.add_node("list_edit_choice", nodes.list_edit_choice_node)
     builder.add_node("list_edit_save", nodes.list_edit_save_node)
     builder.add_node("list_edit_cancel", nodes.list_edit_cancel_node)
     builder.add_node("list_delete", nodes.list_delete_node)
@@ -163,6 +166,7 @@ def build_graph():
             "list_noop": "list_noop",
             "list_edit": "list_edit",
             "list_edit_field": "list_edit_field",
+            "list_edit_choice": "list_edit_choice",
             "list_edit_save": "list_edit_save",
             "list_edit_cancel": "list_edit_cancel",
             "list_delete": "list_delete",
@@ -183,7 +187,7 @@ def build_graph():
         "start", "help", "cancel", "fallback", "stub", "list",
         "list_prev", "list_next", "list_noop", "list_edit", "list_delete",
         "list_delete_do", "list_delete_cancel",
-        "list_edit_field", "list_edit_save", "list_edit_cancel",
+        "list_edit_field", "list_edit_choice", "list_edit_save", "list_edit_cancel",
         "outfit_start", "outfit_location", "outfit_occasion",
         "add_start", "add_expect_photo", "add_photo",
         "add_confirm_category", "add_attribute",
