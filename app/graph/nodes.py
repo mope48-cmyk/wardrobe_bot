@@ -29,6 +29,13 @@ OCCASION_KEYBOARD = [["работа", "прогулка"], ["спорт", "вс�
 
 REMOVE_KB = "remove"
 
+# Главное меню. Используется после /start, /cancel, сохранения вещи и т.п.
+MENU_KEYBOARD = [
+    ["/add", "/list"],
+    ["/outfit", "/help"],
+    ["/cancel"],
+]
+
 
 def _kb(spec) -> dict:
     """Упаковать спеку клавиатуры в additional_kwargs.
@@ -77,7 +84,9 @@ HELP_TEXT = (
 async def start_node(state: BotState) -> dict:
     logger.info("start_node: user_id=%s", state.get("user_id"))
     return {
-        "messages": [AIMessage(content=WELCOME_TEXT, additional_kwargs=_kb(REMOVE_KB))],
+        "messages": [
+            AIMessage(content=WELCOME_TEXT, additional_kwargs=_kb(MENU_KEYBOARD))
+        ],
         "intent": None, "step": None, "draft_item": None,
     }
 
@@ -91,7 +100,7 @@ async def cancel_node(state: BotState) -> dict:
         "messages": [
             AIMessage(
                 content="Хорошо, отменил. Что делаем дальше?",
-                additional_kwargs=_kb(REMOVE_KB),
+                additional_kwargs=_kb(MENU_KEYBOARD),
             )
         ],
         "intent": None, "step": None, "draft_item": None,
@@ -120,7 +129,7 @@ async def list_node(state: BotState) -> dict:
                         "Ваш гардероб пока пуст.\n\n"
                         "Добавьте первую вещь командой /add."
                     ),
-                    additional_kwargs=_kb(REMOVE_KB),
+                    additional_kwargs=_kb(MENU_KEYBOARD),
                 )
             ],
             "step": None, "intent": None, "draft_item": None,
@@ -128,7 +137,10 @@ async def list_node(state: BotState) -> dict:
 
     total = len(items)
     messages: list[AIMessage] = [
-        AIMessage(content=f"В гардеробе <b>{total}</b> вещей:")
+        AIMessage(
+            content=f"В гардеробе <b>{total}</b> вещей:",
+            additional_kwargs=_kb(MENU_KEYBOARD),
+        )
     ]
 
     for item in items:
@@ -371,7 +383,7 @@ async def add_confirm_category_node(state: BotState) -> dict:
                 "messages": [
                     AIMessage(
                         content=f"Не удалось сохранить: {e}",
-                        additional_kwargs=_kb(REMOVE_KB),
+                        additional_kwargs=_kb(MENU_KEYBOARD),
                     )
                 ],
                 "step": None, "draft_item": None, "intent": None,
@@ -391,7 +403,7 @@ async def add_confirm_category_node(state: BotState) -> dict:
                         f"• сезон: {draft['season']}\n\n"
                         "Добавьте ещё вещь командой /add."
                     ),
-                    additional_kwargs=_kb(REMOVE_KB),
+                    additional_kwargs=_kb(MENU_KEYBOARD),
                 )
             ],
             "step": None, "draft_item": None, "intent": None,
@@ -456,7 +468,7 @@ async def add_attribute_node(state: BotState) -> dict:
                 "messages": [
                     AIMessage(
                         content=f"Не удалось сохранить: {e}",
-                        additional_kwargs=_kb(REMOVE_KB),
+                        additional_kwargs=_kb(MENU_KEYBOARD),
                     )
                 ],
                 "step": None, "draft_item": None, "intent": None,
@@ -476,7 +488,7 @@ async def add_attribute_node(state: BotState) -> dict:
                         f"• сезон: {draft['season']}\n\n"
                         "Добавьте ещё вещь командой /add."
                     ),
-                    additional_kwargs=_kb(REMOVE_KB),
+                    additional_kwargs=_kb(MENU_KEYBOARD),
                 )
             ],
             "step": None, "draft_item": None, "intent": None,
@@ -588,7 +600,7 @@ async def outfit_occasion_node(state: BotState) -> dict:
             "messages": [
                 AIMessage(
                     content="Что-то пошло не так с местоположением. Начните заново: /outfit.",
-                    additional_kwargs=_kb(REMOVE_KB),
+                    additional_kwargs=_kb(MENU_KEYBOARD),
                 )
             ],
             "step": None, "intent": None,
@@ -600,7 +612,7 @@ async def outfit_occasion_node(state: BotState) -> dict:
             "messages": [
                 AIMessage(
                     content="Не удалось получить погоду. Попробуйте позже или начните заново: /outfit.",
-                    additional_kwargs=_kb(REMOVE_KB),
+                    additional_kwargs=_kb(MENU_KEYBOARD),
                 )
             ],
             "step": None, "intent": None, "location": None,
@@ -615,7 +627,7 @@ async def outfit_occasion_node(state: BotState) -> dict:
                         "Ваш гардероб пуст. Добавьте вещи через /add, "
                         "затем повторите /outfit."
                     ),
-                    additional_kwargs=_kb(REMOVE_KB),
+                    additional_kwargs=_kb(MENU_KEYBOARD),
                 )
             ],
             "step": None, "intent": None, "location": None,
@@ -638,7 +650,7 @@ async def outfit_occasion_node(state: BotState) -> dict:
                         "К сожалению, в вашем гардеробе нет подходящих вещей. "
                         "Добавьте их через /add."
                     ),
-                    additional_kwargs=_kb(REMOVE_KB),
+                    additional_kwargs=_kb(MENU_KEYBOARD),
                 )
             ],
             "step": None, "intent": None, "location": None,
@@ -664,11 +676,11 @@ async def outfit_occasion_node(state: BotState) -> dict:
             )
         )
 
-    # Финальное сообщение с клавиатурой "убрать"
+    # Финальное сообщение с главным меню
     messages.append(
         AIMessage(
             content="Если хотите — подберите ещё раз: /outfit.",
-            additional_kwargs=_kb(REMOVE_KB),
+            additional_kwargs=_kb(MENU_KEYBOARD),
         )
     )
 
