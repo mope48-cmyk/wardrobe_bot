@@ -1,6 +1,7 @@
 """Узлы графа LangGraph."""
 
 import logging
+from html import escape as esc
 
 from langchain_core.messages import AIMessage
 
@@ -1268,6 +1269,7 @@ async def outfit_location_node(state: BotState) -> dict:
 
 
 async def outfit_occasion_node(state: BotState) -> dict:
+    """Обработка повода: погода, подбор, отправка результата."""
     text = (state.get("input_text") or "").strip().lower()
 
     if text not in VALID_OCCASIONS:
@@ -1288,7 +1290,10 @@ async def outfit_occasion_node(state: BotState) -> dict:
         return {
             "messages": [
                 AIMessage(
-                    content="Что-то пошло не так с местоположением. Начните заново: /outfit.",
+                    content=(
+                        "Что-то пошло не так с местоположением. "
+                        "Начните заново: /outfit."
+                    ),
                     additional_kwargs=_kb(MENU_KEYBOARD),
                 )
             ],
@@ -1300,7 +1305,10 @@ async def outfit_occasion_node(state: BotState) -> dict:
         return {
             "messages": [
                 AIMessage(
-                    content="Не удалось получить погоду. Попробуйте позже или начните заново: /outfit.",
+                    content=(
+                        "Не удалось получить погоду. "
+                        "Попробуйте позже или начните заново: /outfit."
+                    ),
                     additional_kwargs=_kb(MENU_KEYBOARD),
                 )
             ],
@@ -1323,21 +1331,22 @@ async def outfit_occasion_node(state: BotState) -> dict:
             "weather": weather,
         }
 
-    outfit = select_outfit(list(items), weather, text)
+    result = select_outfit(list(items), weather, text)
 
     city_str = f" ({loc['city']})" if loc.get("city") else ""
     temp = weather["temp"]
     desc = weather["description"]
-    header = f"Погода{city_str}: {desc}, {temp:.0f}°C.\nПовод: {text}."
+    header = f"🌤 <b>Погода{esc(city_str)}</b>: {desc}, {temp:.0f}°C\n<b>Повод:</b> {text}"
 
-    if not outfit:
+    if not result.items:
+        # Единственный случай, когда не можем помочь: гардероб пуст
+        # (сюда не попадём, т.к. выше уже проверили items, но на всякий случай).
         return {
             "messages": [
                 AIMessage(
                     content=(
                         f"{header}\n\n"
-                        "К сожалению, в вашем гардеробе нет подходящих вещей. "
-                        "Добавьте их через /add."
+                        "Не удалось собрать комплект. Добавьте вещи через /add."
                     ),
                     additional_kwargs=_kb(MENU_KEYBOARD),
                 )
@@ -1346,35 +1355,77 @@ async def outfit_occasion_node(state: BotState) -> dict:
             "weather": weather,
         }
 
-    messages: list[AIMessage] = [
-        AIMessage(content=f"{header}\n\nВот что предлагаю надеть:")
-    ]
+    # Группируем по категориям для структурированного вывода
+    by_cat: dict[str, list] = {}
+    for item in result.items:
+        by_cat.setdefault(item.category, []).append(item)
 
-    for category, item in outfit.items():
-        waterproof_mark = "💧 " if item.waterproof else ""
-        caption = (
-            f"<b>{item.category} / {item.type}</b>\n"
-            f"цвет: {item.color}\n"
-            f"{waterproof_mark}тепло: {item.warmth_level}/5, "
-            f"стиль: {item.formal_level}, сезон: {item.season}"
-        )
-        messages.append(
-            AIMessage(
-                content=caption,
-                additional_kwargs={"photo_file_id": item.photo_file_id},
+    cat_labels = {
+        "верх": "👕 Верх",
+        "низ": "👖 Низ",
+        "обувь": "👟 Обувь",
+        "аксессуар": "🧢 Аксессуары",
+    }
+    cat_order = ["верх", "низ", "обувь", "аксессуар"]
+
+    lines = [header, ""]
+    for cat in cat_order:
+        cat_items = by_cat.get(cat)
+        if not cat_items:
+            continue
+        lines.append(f"<b>{cat_labels[cat]}:</b>")
+        for item in cat_items:
+            wp = " 💧" if item.waterproof else ""
+            mark = " ⚠️" if cat in result.relaxed_categories else ""
+            lines.append(
+                f"• {item.type} — тепло {item.warmth_level}/5, "
+                f"{item.formal_level}, {item.season}{wp}{mark}"
             )
+        lines.append("")
+
+    # Предупреждения
+    warnings: list[str] = []
+    if result.relaxed_categories:
+        relaxed_names = ", ".join(
+            {"верх": "верх", "низ": "низ", "обувь": "обувь"}
+            .get(c, c) for c in sorted(result.relaxed_categories)
+        )
+        warnings.append(
+            f"⚠️ Для категорий ({relaxed_names}) нет вещей, идеально "
+            "подходящих по погоде — показаны ближайшие варианты. "
+            "Возможно, будет некомфортно."
+        )
+    if result.missing_categories:
+        missing_names = ", ".join(
+            {"верх": "верх", "низ": "низ", "обувь": "обувь"}
+            .get(c, c) for c in sorted(result.missing_categories)
+        )
+        warnings.append(
+            f"ℹ️ В гардеробе нет вещей категорий: {missing_names}. "
+            "Добавьте их через /add."
         )
 
-    # Финальное сообщение с главным меню
-    messages.append(
-        AIMessage(
-            content="Если хотите — подберите ещё раз: /outfit.",
-            additional_kwargs=_kb(MENU_KEYBOARD),
-        )
-    )
+    if warnings:
+        lines.append("")
+        lines.extend(warnings)
+
+    caption = "\n".join(lines).rstrip()
+    if len(caption) > 1024:
+        caption = caption[:1020] + "…"
+
+    photo_ids = [item.photo_file_id for item in result.items]
 
     return {
-        "messages": messages,
+        "messages": [
+            AIMessage(
+                content=caption,
+                additional_kwargs={"media_group": photo_ids},
+            ),
+            AIMessage(
+                content="Если хотите — подберите ещё раз: /outfit.",
+                additional_kwargs=_kb(MENU_KEYBOARD),
+            ),
+        ],
         "step": None, "intent": None,
         "location": None, "weather": weather,
         "occasion": text,

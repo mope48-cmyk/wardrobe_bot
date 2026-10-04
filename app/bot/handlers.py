@@ -116,25 +116,60 @@ async def _send_ai_message(message: Message, ai_msg) -> None:
     """Отправить одно сообщение ассистента.
 
     Поддерживает:
-    - photo_file_id + caption → answer_photo;
-    - edit_message_id + edit_mode:
-        * "media"   → edit_message_media (когда меняется фото)
-        * "caption" → edit_message_caption (когда фото то же);
+    - media_group → sendMediaGroup (до 10 фото, caption только у первого);
+    - photo_file_id + edit_message_id + edit_mode:
+        * "media"   → edit_message_media;
+        * "caption" → edit_message_caption;
+    - photo_file_id → answer_photo;
     - reply_keyboard / inline_keyboard;
-    - пустой content с inline → отправит заглушку "…".
+    - текст как fallback.
     """
     extra = getattr(ai_msg, "additional_kwargs", None) or {}
     photo_file_id = extra.get("photo_file_id")
     edit_message_id = extra.get("edit_message_id")
     edit_mode = extra.get("edit_mode", "media")
+    media_group = extra.get("media_group")
     reply_markup = _build_reply_markup(extra.get("reply_keyboard"))
     inline_markup = _build_inline_markup(extra.get("inline_keyboard"))
 
-    # Inline-клавиатура имеет приоритет: она не «залипает» в чате.
     effective_markup = inline_markup or reply_markup
 
-    # Сценарий 1: редактируем caption существующего сообщения
-    # (фото не меняется — используется при подтверждении удаления и отмене)
+    # 1. Media group — только новое сообщение, без правки
+    if media_group:
+        try:
+            media = []
+            for i, fid in enumerate(media_group[:10]):
+                media.append(
+                    InputMediaPhoto(
+                        media=fid,
+                        caption=(ai_msg.content or None) if i == 0 else None,
+                        parse_mode="HTML" if i == 0 else None,
+                    )
+                )
+            await message.answer_media_group(media=media)
+            return
+        except Exception:
+            logger.exception(
+                "Не удалось отправить media_group, отправляю текстом"
+            )
+            # фолбэк: первое фото с caption + текст, либо просто текст
+            if photo_file_id or media_group:
+                first = photo_file_id or media_group[0]
+                try:
+                    await message.answer_photo(
+                        photo=first,
+                        caption=ai_msg.content or "…",
+                        reply_markup=effective_markup,
+                    )
+                    return
+                except Exception:
+                    logger.exception("Фото тоже не отправилось")
+            await message.answer(
+                ai_msg.content or "…", reply_markup=effective_markup
+            )
+            return
+
+    # 2. Редактируем caption существующего сообщения
     if edit_message_id and edit_mode == "caption":
         try:
             await message.bot.edit_message_caption(
@@ -150,8 +185,7 @@ async def _send_ai_message(message: Message, ai_msg) -> None:
                 "edit_message_caption не удался, отправляю новое сообщение"
             )
 
-    # Сценарий 2: редактируем media существующего сообщения
-    # (навигация по списку: меняется и фото, и caption)
+    # 3. Редактируем media существующего сообщения
     if edit_message_id and edit_mode == "media" and photo_file_id:
         try:
             await message.bot.edit_message_media(
@@ -170,7 +204,7 @@ async def _send_ai_message(message: Message, ai_msg) -> None:
                 "edit_message_media не удался, отправляю новое сообщение"
             )
 
-    # Сценарий 3: новое сообщение с фото
+    # 4. Новое сообщение с фото
     if photo_file_id:
         try:
             await message.answer_photo(
@@ -182,7 +216,7 @@ async def _send_ai_message(message: Message, ai_msg) -> None:
         except Exception:
             logger.exception("Не удалось отправить фото, шлю текстом")
 
-    # Сценарий 4: текстовое сообщение
+    # 5. Текстовое сообщение
     await message.answer(ai_msg.content or "…", reply_markup=effective_markup)
 
 
