@@ -115,49 +115,102 @@ TYPE_DEFAULTS = {
     "рюкзак":            (1, False, "casual", "универсальная"),
 }
 
-# Палитра цветов (оставляем как было, улучшите позже).
-COLOR_PALETTE = {
-    "чёрный":      (30, 30, 30),
-    "белый":       (245, 245, 245),
-    "серый":       (128, 128, 128),
-    "бежевый":     (222, 202, 165),
-    "коричневый":  (110, 70, 40),
-    "красный":     (200, 40, 40),
-    "бордовый":    (110, 20, 40),
-    "оранжевый":   (240, 130, 30),
-    "жёлтый":      (240, 220, 60),
-    "зелёный":     (50, 150, 60),
-    "голубой":     (120, 180, 230),
-    "синий":       (40, 70, 180),
-    "фиолетовый":  (130, 70, 180),
-    "розовый":     (240, 140, 180),
-}
+# ---------- Определение цвета ----------
+
+import colorsys
 
 
-def _nearest_color(rgb: tuple[int, int, int]) -> str:
-    r, g, b = rgb
-    best_name = "неизвестный"
-    best_dist = float("inf")
-    for name, (cr, cg, cb) in COLOR_PALETTE.items():
-        d = (r - cr) ** 2 + (g - cg) ** 2 + (b - cb) ** 2
-        if d < best_dist:
-            best_dist = d
-            best_name = name
-    return best_name
+def _rgb_to_color_name(r: int, g: int, b: int) -> str:
+    """Определить имя цвета по RGB через HSV.
+
+    HSV отделяет оттенок (Hue) от яркости (Value) и насыщенности (Saturation),
+    поэтому тени и освещение влияют слабее, чем в чистом RGB.
+    """
+    h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+    h_deg = h * 360      # 0–360: тон
+    s_pct = s * 100      # 0–100: насыщенность
+    v_pct = v * 100      # 0–100: яркость
+
+    # Ахроматические цвета (низкая насыщенность)
+    if s_pct < 15:
+        if v_pct < 20:
+            return "чёрный"
+        if v_pct > 85:
+            return "белый"
+        return "серый"
+
+    # Коричневый — тёмный и умеренно насыщенный, в оранжево-жёлтом диапазоне
+    if 15 <= h_deg < 50 and v_pct < 55 and s_pct > 20:
+        return "коричневый"
+
+    # Бежевый — светлый, слабонасыщенный, тёплый
+    if 20 <= h_deg < 55 and s_pct < 40 and v_pct > 60:
+        return "бежевый"
+
+    # Цветные по тону
+    if h_deg < 15 or h_deg >= 345:
+        if v_pct < 50:
+            return "бордовый"
+        return "красный"
+    if h_deg < 40:
+        return "оранжевый"
+    if h_deg < 70:
+        return "жёлтый"
+    if h_deg < 165:
+        return "зелёный"
+    if h_deg < 200:
+        return "голубой"
+    if h_deg < 255:
+        return "синий"
+    if h_deg < 290:
+        return "фиолетовый"
+    if h_deg < 345:
+        return "розовый"
+
+    return "неизвестный"
 
 
 def detect_color(image_bytes: bytes) -> tuple[str, list[str]]:
-    img = Image.open(BytesIO(image_bytes)).convert("RGB")
-    img.thumbnail((150, 150))
-    pixels = list(img.getdata())
-    counter = Counter()
-    for p in pixels:
-        counter[_nearest_color(p)] += 1
-    if not counter:
-        return "неизвестный", []
-    top = counter.most_common(3)
-    return top[0][0], [name for name, _ in top]
+    """Определить доминирующий цвет и топ-3.
 
+    Алгоритм:
+    1. Уменьшаем изображение до 200×200 (для скорости).
+    2. Отрезаем 15% по краям — вещь почти всегда в центре, фон по краям.
+    3. Квантуем в 5 доминирующих цветов (встроенный PIL quantize).
+    4. Каждый кластер переводим в имя цвета через HSV.
+    5. Возвращаем самый частый как основной + топ-3 уникальных имён.
+    """
+    img = Image.open(BytesIO(image_bytes)).convert("RGB")
+    img.thumbnail((200, 200))
+
+    w, h = img.size
+    margin_x = int(w * 0.15)
+    margin_y = int(h * 0.15)
+    img = img.crop((margin_x, margin_y, w - margin_x, h - margin_y))
+
+    # Квантование: 5 доминирующих цветов на изображении.
+    # MEDIANCUT — быстрый и хорошо работает на фотографиях.
+    quantized = img.quantize(colors=5, method=Image.Quantize.MEDIANCUT)
+    palette = quantized.getpalette() or []
+    counts = quantized.getcolors(maxcolors=256) or []
+
+    if not counts:
+        return "неизвестный", []
+
+    # counts = [(count, palette_index), ...]. Сортируем по частоте.
+    counts.sort(key=lambda x: x[0], reverse=True)
+
+    color_names: list[str] = []
+    for _, idx in counts:
+        r = palette[idx * 3]
+        g = palette[idx * 3 + 1]
+        b = palette[idx * 3 + 2]
+        name = _rgb_to_color_name(r, g, b)
+        if name not in color_names:
+            color_names.append(name)
+
+    primary = color_names[0] if color_names else "неизвестный"
+    return primary, color_names[:3]
 
 _classifier = None
 
