@@ -4,7 +4,7 @@ import logging
 
 from langchain_core.messages import AIMessage
 
-from app.db.repository import add_item, get_items
+from app.db.repository import add_item, delete_item, get_item, get_items
 from app.graph.state import BotState
 from app.services.outfit import select_outfit
 from app.services.vision import classify_clothing
@@ -31,10 +31,11 @@ OCCASION_KEYBOARD = [["работа", "прогулка"], ["спорт", "вс�
 REMOVE_KB = "remove"
 
 # Главное меню. Используется после /start, /cancel, сохранения вещи и т.п.
+# Подписи на русском с эмодзи. Маршрутизация по ним — в builder.route_condition.
 MENU_KEYBOARD = [
-    ["/add", "/list"],
-    ["/outfit", "/help"],
-    ["/cancel"],
+    ["➕ Добавить вещь"],
+    ["👕 Мой гардероб", "🌤 Подобрать образ"],
+    ["❓ Помощь", "❌ Отмена"],
 ]
 
 
@@ -183,9 +184,123 @@ async def stub_node(state: BotState) -> dict:
     return {"messages": [AIMessage(content="Эта команда появится позже.")]}
 
 
-# ---------- /list ----------
+# ---------- /list: постраничный просмотр ----------
+
+LIST_PREVIEW_LEN = 60  # сколько символов типа показывать в заголовке
+
+
+def _item_caption(item) -> str:
+    """Подпись под фото вещи."""
+    waterproof_mark = "💧 " if item.waterproof else ""
+    return (
+        f"<b>{item.category} / {item.type}</b>\n"
+        f"цвет: {item.color}\n"
+        f"{waterproof_mark}тепло: {item.warmth_level}/5, "
+        f"стиль: {item.formal_level}, сезон: {item.season}"
+    )
+
+
+def _list_keyboard(index: int, total: int) -> list[list[dict]]:
+    """Inline-клавиатура для просмотра одной вещи.
+
+    На границах prev/next становятся noop-кнопками — они не меняют
+    состояние, но показывают подсказку через callback.answer (в handlers).
+    """
+    prev_cb = "list:prev" if index > 0 else "list:noop:first"
+    next_cb = "list:next" if index < total - 1 else "list:noop:last"
+
+    return [
+        [
+            {"text": "✏️ Редактировать", "callback_data": "list:edit"},
+            {"text": "🗑 Удалить", "callback_data": "list:delete"},
+        ],
+        [
+            {"text": "⬅️ Назад", "callback_data": prev_cb},
+            {"text": "Вперёд ➡️", "callback_data": next_cb},
+        ],
+    ]
+
+
+async def _render_current(state: BotState, edit_mode: str = "media") -> dict:
+    """Отрисовать текущую вещь из list_ids[list_index].
+
+    Универсальная функция: используется и для /list, и для поиска,
+    и для любого другого списка, положенного в list_ids.
+
+    edit_mode:
+      - "media"   → handlers вызовет edit_message_media
+                    (подходит, когда меняется фото)
+      - "caption" → handlers вызовет edit_message_caption
+                    (когда фото то же, меняется только текст и кнопки)
+    """
+    ids = list(state.get("list_ids") or [])
+    index = state.get("list_index") or 0
+    edit_message_id = state.get("edit_message_id")
+
+    if not ids:
+        return {
+            "messages": [
+                AIMessage(
+                    content="Список пуст.",
+                    additional_kwargs=_kb(MENU_KEYBOARD),
+                )
+            ],
+            "step": None, "intent": None,
+            "list_ids": None, "list_index": 0,
+            "edit_message_id": None,
+        }
+
+    index = max(0, min(index, len(ids) - 1))
+    total = len(ids)
+    item_id = ids[index]
+    item = await get_item(item_id)
+
+    if item is None:
+        # Вещь удалили — убираем её из списка
+        ids.pop(index)
+        if not ids:
+            return {
+                "messages": [
+                    AIMessage(
+                        content="В гардеробе больше нет вещей.",
+                        additional_kwargs=_kb(MENU_KEYBOARD),
+                    )
+                ],
+                "step": None, "intent": None,
+                "list_ids": None, "list_index": 0,
+                "edit_message_id": None,
+            }
+        new_index = min(index, len(ids) - 1)
+        return await _render_current({
+            **state,
+            "list_ids": ids,
+            "list_index": new_index,
+        })
+
+    header = f"📋 Вещь <b>{index + 1}</b> из <b>{total}</b>\n\n"
+    caption = header + _item_caption(item)
+
+    additional: dict = {
+        "photo_file_id": item.photo_file_id,
+        "inline_keyboard": _list_keyboard(index, total),
+        "edit_mode": edit_mode,
+    }
+    if edit_message_id is not None:
+        additional["edit_message_id"] = edit_message_id
+
+    return {
+        "messages": [AIMessage(content=caption, additional_kwargs=additional)],
+        "step": "list_view",
+        "intent": "list",
+        "list_ids": ids,
+        "list_index": index,
+        "list_source": state.get("list_source") or "list",
+        "edit_message_id": edit_message_id,
+    }
+
 
 async def list_node(state: BotState) -> dict:
+    """/list — загружаем все вещи пользователя и показываем первую."""
     user_id = state["user_id"]
     items = await get_items(user_id)
 
@@ -200,36 +315,202 @@ async def list_node(state: BotState) -> dict:
                     additional_kwargs=_kb(MENU_KEYBOARD),
                 )
             ],
-            "step": None, "intent": None, "draft_item": None,
+            "step": None, "intent": None,
+            "list_ids": None, "list_index": 0,
+            "edit_message_id": None,
         }
 
-    total = len(items)
-    messages: list[AIMessage] = [
-        AIMessage(
-            content=f"В гардеробе <b>{total}</b> вещей:",
-            additional_kwargs=_kb(MENU_KEYBOARD),
-        )
-    ]
+    ids = [item.id for item in items]
+    return await _render_current({
+        **state,
+        "list_ids": ids,
+        "list_index": 0,
+        "list_source": "list",
+        "edit_message_id": None,  # первое сообщение — новое
+    })
 
-    for item in items:
-        waterproof_mark = "💧 " if item.waterproof else ""
-        caption = (
-            f"<b>{item.category} / {item.type}</b>\n"
-            f"цвет: {item.color}\n"
-            f"{waterproof_mark}тепло: {item.warmth_level}/5, "
-            f"стиль: {item.formal_level}, сезон: {item.season}"
-        )
-        messages.append(
-            AIMessage(
-                content=caption,
-                additional_kwargs={"photo_file_id": item.photo_file_id},
-            )
-        )
+
+async def list_prev_node(state: BotState) -> dict:
+    """Перейти к предыдущей вещи."""
+    index = state.get("list_index") or 0
+    return await _render_current({**state, "list_index": max(0, index - 1)})
+
+
+async def list_next_node(state: BotState) -> dict:
+    """Перейти к следующей вещи."""
+    ids = state.get("list_ids") or []
+    index = state.get("list_index") or 0
+    return await _render_current({
+        **state,
+        "list_index": min(len(ids) - 1, index + 1),
+    })
+
+
+async def list_noop_node(state: BotState) -> dict:
+    """Ничего не делать (границы списка).
+
+    Handlers сам покажет alert через callback.answer — здесь просто
+    возвращаем пустой ответ, чтобы граф не падал.
+    """
+    return {}
+
+
+async def list_edit_node(state: BotState) -> dict:
+    """Начать редактирование вещи (заглушка до этапа 8.3)."""
+    ids = state.get("list_ids") or []
+    index = state.get("list_index") or 0
+    if not ids or index >= len(ids):
+        return {
+            "messages": [AIMessage(content="Нечего редактировать.")],
+            "step": None, "intent": None,
+        }
+
+    item = await get_item(ids[index])
+    if item is None:
+        return {
+            "messages": [AIMessage(content="Вещь не найдена.")],
+            "step": None, "intent": None,
+        }
 
     return {
-        "messages": messages,
-        "step": None, "intent": None, "draft_item": None,
+        "messages": [
+            AIMessage(
+                content=(
+                    f"<b>Редактирование:</b> {item.category} / {item.type}\n\n"
+                    "Функция появится на следующем шаге. Пока можно "
+                    "удалить вещь и добавить заново."
+                ),
+                additional_kwargs=_kb(MENU_KEYBOARD),
+            )
+        ],
+        "step": None, "intent": None,
+        "list_ids": None, "list_index": 0,
+        "edit_message_id": None,
     }
+
+
+async def list_delete_node(state: BotState) -> dict:
+    """Показать подтверждение удаления текущей вещи.
+
+    Редактирует то же сообщение (edit_mode="caption"), меняя caption
+    на вопрос подтверждения и клавиатуру на [✅ Да] [❌ Отмена].
+    """
+    ids = state.get("list_ids") or []
+    index = state.get("list_index") or 0
+    edit_message_id = state.get("edit_message_id")
+
+    if not ids or index >= len(ids):
+        return {
+            "messages": [AIMessage(content="Нечего удалять.")],
+            "step": None, "intent": None,
+        }
+
+    item = await get_item(ids[index])
+    if item is None:
+        return {
+            "messages": [AIMessage(content="Вещь не найдена.")],
+            "step": None, "intent": None,
+        }
+
+    caption = (
+        "🗑 <b>Удалить вещь?</b>\n\n"
+        f"{item.category} / {item.type}\n"
+        f"цвет: {item.color}\n\n"
+        "Это действие необратимо."
+    )
+
+    additional: dict = {
+        "photo_file_id": item.photo_file_id,
+        "inline_keyboard": [
+            [
+                {"text": "✅ Да, удалить", "callback_data": "list:delete_confirm"},
+                {"text": "❌ Отмена", "callback_data": "list:delete_cancel"},
+            ]
+        ],
+        "edit_mode": "caption",
+    }
+    if edit_message_id is not None:
+        additional["edit_message_id"] = edit_message_id
+
+    return {
+        "messages": [AIMessage(content=caption, additional_kwargs=additional)],
+        "step": "list_view",
+        "intent": "list",
+        "list_ids": ids,
+        "list_index": index,
+        "edit_message_id": edit_message_id,
+    }
+
+
+async def list_delete_do_node(state: BotState) -> dict:
+    """Выполнить удаление и показать следующую вещь."""
+    ids = list(state.get("list_ids") or [])
+    index = state.get("list_index") or 0
+    edit_message_id = state.get("edit_message_id")
+    user_id = state["user_id"]
+
+    if not ids or index >= len(ids):
+        return {
+            "messages": [AIMessage(content="Нечего удалять.")],
+            "step": None, "intent": None,
+        }
+
+    item_id = ids[index]
+    item = await get_item(item_id)
+
+    deleted = await delete_item(item_id, user_id)
+    if not deleted:
+        return {
+            "messages": [
+                AIMessage(
+                    content="Не удалось удалить вещь — возможно, её уже нет.",
+                    additional_kwargs=_kb(MENU_KEYBOARD),
+                )
+            ],
+            "step": None, "intent": None,
+            "list_ids": None, "list_index": 0,
+            "edit_message_id": None,
+        }
+
+    # Убираем id из списка
+    new_ids = [i for i in ids if i != item_id]
+
+    if not new_ids:
+        # Гардероб опустел — новое сообщение (нельзя отредактировать медиа в пустое)
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        f"🗑 Вещь «{item.category} / {item.type}» удалена.\n\n"
+                        "Больше в гардеробе ничего нет."
+                    ),
+                    additional_kwargs=_kb(MENU_KEYBOARD),
+                )
+            ],
+            "step": None, "intent": None,
+            "list_ids": None, "list_index": 0,
+            "edit_message_id": None,
+        }
+
+    # Определяем индекс следующей вещи:
+    # если удалили последнюю — сдвигаемся на предыдущую,
+    # иначе остаёмся на том же индексе (там теперь следующая).
+    new_index = min(index, len(new_ids) - 1)
+
+    return await _render_current({
+        **state,
+        "list_ids": new_ids,
+        "list_index": new_index,
+        "edit_message_id": edit_message_id,
+    })
+
+
+async def list_delete_cancel_node(state: BotState) -> dict:
+    """Отменить удаление — вернуться к просмотру текущей вещи.
+
+    edit_mode="caption": фото то же, меняется только caption и кнопки.
+    """
+    return await _render_current(state, edit_mode="caption")
 
 
 # ---------- /add ----------
