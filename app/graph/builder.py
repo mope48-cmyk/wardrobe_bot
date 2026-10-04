@@ -54,6 +54,10 @@ def route_condition(state: BotState) -> str:
         return "list_noop"
     if text == "list:edit":
         return "list_edit"
+    if text == "list:edit:cancel":
+        return "list_edit_cancel"
+    if text.startswith("list:edit:"):
+        return "list_edit_field"
     if text == "list:delete":
         return "list_delete"
     if text == "list:delete_confirm":
@@ -99,6 +103,9 @@ def route_condition(state: BotState) -> str:
     if step == "awaiting_occasion":
         return "outfit_occasion"
 
+    if step == "list_edit_input":
+        return "list_edit_save"
+
     if step and step.startswith("awaiting_"):
         return "add_attribute"
 
@@ -125,6 +132,9 @@ def build_graph():
     builder.add_node("list_next", nodes.list_next_node)
     builder.add_node("list_noop", nodes.list_noop_node)
     builder.add_node("list_edit", nodes.list_edit_node)
+    builder.add_node("list_edit_field", nodes.list_edit_field_node)
+    builder.add_node("list_edit_save", nodes.list_edit_save_node)
+    builder.add_node("list_edit_cancel", nodes.list_edit_cancel_node)
     builder.add_node("list_delete", nodes.list_delete_node)
     builder.add_node("list_delete_do", nodes.list_delete_do_node)
     builder.add_node("list_delete_cancel", nodes.list_delete_cancel_node)
@@ -152,6 +162,9 @@ def build_graph():
             "list_next": "list_next",
             "list_noop": "list_noop",
             "list_edit": "list_edit",
+            "list_edit_field": "list_edit_field",
+            "list_edit_save": "list_edit_save",
+            "list_edit_cancel": "list_edit_cancel",
             "list_delete": "list_delete",
             "list_delete_do": "list_delete_do",
             "list_delete_cancel": "list_delete_cancel",
@@ -170,6 +183,7 @@ def build_graph():
         "start", "help", "cancel", "fallback", "stub", "list",
         "list_prev", "list_next", "list_noop", "list_edit", "list_delete",
         "list_delete_do", "list_delete_cancel",
+        "list_edit_field", "list_edit_save", "list_edit_cancel",
         "outfit_start", "outfit_location", "outfit_occasion",
         "add_start", "add_expect_photo", "add_photo",
         "add_confirm_category", "add_attribute",

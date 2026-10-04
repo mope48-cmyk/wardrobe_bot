@@ -4,7 +4,13 @@ import logging
 
 from langchain_core.messages import AIMessage
 
-from app.db.repository import add_item, delete_item, get_item, get_items
+from app.db.repository import (
+    add_item,
+    delete_item,
+    get_item,
+    get_items,
+    update_item_field,
+)
 from app.graph.state import BotState
 from app.services.outfit import select_outfit
 from app.services.vision import classify_clothing
@@ -355,10 +361,97 @@ async def list_noop_node(state: BotState) -> dict:
     return {}
 
 
+# ---------- Редактирование вещи ----------
+
+# Логическое имя поля → колонка в БД
+EDIT_FIELD_TO_DB = {
+    "category": "category",
+    "type": "type",
+    "color": "color",
+    "warmth": "warmth_level",
+    "waterproof": "waterproof",
+    "formal": "formal_level",
+    "season": "season",
+}
+
+# Человекочитаемое имя поля
+EDIT_FIELD_LABEL = {
+    "category": "Категория",
+    "type": "Тип",
+    "color": "Цвет",
+    "warmth": "Тепло (1–5)",
+    "waterproof": "Водонепроницаемость (да/нет)",
+    "formal": "Стиль (casual / business / sport)",
+    "season": "Сезон (лето / демисезон / зима / универсальная)",
+}
+
+
+def _validate_edit_field(
+    field: str, text: str
+) -> tuple[bool, object, str]:
+    """Проверить ввод пользователя при редактировании поля."""
+    text = text.strip()
+    lower = text.lower()
+
+    if field == "category":
+        if lower in VALID_CATEGORIES:
+            return True, lower, ""
+        return False, None, "Выберите: верх, низ, обувь или аксессуар."
+
+    if field == "type":
+        if len(text) >= 2:
+            return True, text, ""
+        return False, None, "Слишком коротко. Напишите название типа."
+
+    if field == "color":
+        if len(text) >= 2:
+            return True, text, ""
+        return False, None, "Напишите цвет текстом."
+
+    if field == "warmth":
+        try:
+            n = int(text)
+            if 1 <= n <= 5:
+                return True, n, ""
+        except ValueError:
+            pass
+        return False, None, "Введите число от 1 до 5."
+
+    if field == "waterproof":
+        if lower in ("да", "yes", "true", "1"):
+            return True, True, ""
+        if lower in ("нет", "no", "false", "0"):
+            return True, False, ""
+        return False, None, "Ответьте да или нет."
+
+    if field == "formal":
+        if lower in VALID_FORMAL:
+            return True, lower, ""
+        return False, None, "Выберите: casual, business или sport."
+
+    if field == "season":
+        if lower in VALID_SEASON:
+            return True, lower, ""
+        return False, None, "Выберите: лето, демисезон, зима или универсальная."
+
+    return False, None, "Неизвестное поле."
+
+
+def _field_value_str(item, field: str) -> str:
+    """Текущее значение поля в виде строки для отображения."""
+    db_field = EDIT_FIELD_TO_DB[field]
+    value = getattr(item, db_field)
+    if isinstance(value, bool):
+        return "да" if value else "нет"
+    return str(value)
+
+
 async def list_edit_node(state: BotState) -> dict:
-    """Начать редактирование вещи (заглушка до этапа 8.3)."""
+    """Показать меню редактирования вещи."""
     ids = state.get("list_ids") or []
     index = state.get("list_index") or 0
+    edit_message_id = state.get("edit_message_id")
+
     if not ids or index >= len(ids):
         return {
             "messages": [AIMessage(content="Нечего редактировать.")],
@@ -372,21 +465,204 @@ async def list_edit_node(state: BotState) -> dict:
             "step": None, "intent": None,
         }
 
-    return {
-        "messages": [
-            AIMessage(
-                content=(
-                    f"<b>Редактирование:</b> {item.category} / {item.type}\n\n"
-                    "Функция появится на следующем шаге. Пока можно "
-                    "удалить вещь и добавить заново."
-                ),
-                additional_kwargs=_kb(MENU_KEYBOARD),
-            )
+    caption = (
+        "✏️ <b>Редактирование вещи</b>\n\n"
+        f"{item.category} / {item.type}\n"
+        f"цвет: {item.color}\n"
+        f"тепло: {item.warmth_level}/5\n"
+        f"водонепроницаемая: {'да' if item.waterproof else 'нет'}\n"
+        f"стиль: {item.formal_level}\n"
+        f"сезон: {item.season}\n\n"
+        "Что изменить?"
+    )
+
+    keyboard = [
+        [
+            {"text": "Категория", "callback_data": "list:edit:category"},
+            {"text": "Тип", "callback_data": "list:edit:type"},
         ],
-        "step": None, "intent": None,
-        "list_ids": None, "list_index": 0,
-        "edit_message_id": None,
+        [
+            {"text": "Цвет", "callback_data": "list:edit:color"},
+            {"text": "Тепло", "callback_data": "list:edit:warmth"},
+        ],
+        [
+            {"text": "Водонепроницаемость", "callback_data": "list:edit:waterproof"},
+        ],
+        [
+            {"text": "Стиль", "callback_data": "list:edit:formal"},
+            {"text": "Сезон", "callback_data": "list:edit:season"},
+        ],
+        [
+            {"text": "❌ Отмена", "callback_data": "list:edit:cancel"},
+        ],
+    ]
+
+    additional: dict = {
+        "photo_file_id": item.photo_file_id,
+        "inline_keyboard": keyboard,
+        "edit_mode": "caption",
     }
+    if edit_message_id is not None:
+        additional["edit_message_id"] = edit_message_id
+
+    return {
+        "messages": [AIMessage(content=caption, additional_kwargs=additional)],
+        "step": "list_edit_menu",
+        "intent": "list",
+        "list_ids": ids,
+        "list_index": index,
+        "edit_message_id": edit_message_id,
+        "draft_item": None,
+    }
+
+
+async def list_edit_field_node(state: BotState) -> dict:
+    """Пользователь выбрал поле — просим ввести новое значение."""
+    text = (state.get("input_text") or "").strip()
+    # text выглядит как "list:edit:category"
+    parts = text.split(":", 2)
+    field = parts[2] if len(parts) == 3 else ""
+
+    if field not in EDIT_FIELD_TO_DB:
+        return {
+            "messages": [AIMessage(content="Неизвестное поле.")],
+            "step": None, "intent": None,
+        }
+
+    ids = state.get("list_ids") or []
+    index = state.get("list_index") or 0
+    edit_message_id = state.get("edit_message_id")
+
+    if not ids or index >= len(ids):
+        return {
+            "messages": [AIMessage(content="Нечего редактировать.")],
+            "step": None, "intent": None,
+        }
+
+    item = await get_item(ids[index])
+    if item is None:
+        return {
+            "messages": [AIMessage(content="Вещь не найдена.")],
+            "step": None, "intent": None,
+        }
+
+    current_str = _field_value_str(item, field)
+    label = EDIT_FIELD_LABEL[field]
+
+    caption = (
+        f"✏️ <b>{label}</b>\n\n"
+        f"Текущее значение: <b>{current_str}</b>\n\n"
+        "Введите новое значение текстом."
+    )
+
+    additional: dict = {
+        "photo_file_id": item.photo_file_id,
+        "inline_keyboard": [
+            [{"text": "❌ Отмена", "callback_data": "list:edit:cancel"}],
+        ],
+        "edit_mode": "caption",
+    }
+    if edit_message_id is not None:
+        additional["edit_message_id"] = edit_message_id
+
+    return {
+        "messages": [AIMessage(content=caption, additional_kwargs=additional)],
+        "step": "list_edit_input",
+        "intent": "list",
+        "list_ids": ids,
+        "list_index": index,
+        "edit_message_id": edit_message_id,
+        "draft_item": {"edit_field": field},
+    }
+
+
+async def list_edit_save_node(state: BotState) -> dict:
+    """Сохранить новое значение поля и вернуться к просмотру вещи."""
+    text = (state.get("input_text") or "").strip()
+    draft = state.get("draft_item") or {}
+    field = draft.get("edit_field")
+    ids = state.get("list_ids") or []
+    index = state.get("list_index") or 0
+    edit_message_id = state.get("edit_message_id")
+    user_id = state["user_id"]
+
+    if not field or field not in EDIT_FIELD_TO_DB:
+        return {
+            "messages": [
+                AIMessage(
+                    content="Что-то пошло не так. Начните заново: /list.",
+                    additional_kwargs=_kb(MENU_KEYBOARD),
+                )
+            ],
+            "step": None, "intent": None,
+            "list_ids": None, "list_index": 0,
+            "edit_message_id": None, "draft_item": None,
+        }
+
+    if not ids or index >= len(ids):
+        return {
+            "messages": [AIMessage(content="Нечего редактировать.")],
+            "step": None, "intent": None,
+            "draft_item": None,
+        }
+
+    valid, value, error = _validate_edit_field(field, text)
+    if not valid:
+        # Показываем ошибку поверх той же подсказки, шаг не меняем
+        item = await get_item(ids[index])
+        current_str = _field_value_str(item, field) if item else "?"
+        label = EDIT_FIELD_LABEL[field]
+
+        caption = (
+            f"⚠️ {error}\n\n"
+            f"<b>{label}</b>\n"
+            f"Текущее значение: <b>{current_str}</b>\n\n"
+            "Введите новое значение."
+        )
+
+        additional: dict = {
+            "inline_keyboard": [
+                [{"text": "❌ Отмена", "callback_data": "list:edit:cancel"}],
+            ],
+            "edit_mode": "caption",
+        }
+        if edit_message_id is not None:
+            additional["edit_message_id"] = edit_message_id
+
+        return {
+            "messages": [AIMessage(content=caption, additional_kwargs=additional)],
+        }
+
+    item_id = ids[index]
+    ok = await update_item_field(
+        item_id, user_id, EDIT_FIELD_TO_DB[field], value
+    )
+    if not ok:
+        return {
+            "messages": [
+                AIMessage(
+                    content="Не удалось сохранить изменение.",
+                    additional_kwargs=_kb(MENU_KEYBOARD),
+                )
+            ],
+            "step": None, "intent": None,
+            "list_ids": None, "list_index": 0,
+            "edit_message_id": None, "draft_item": None,
+        }
+
+    # Возвращаемся к просмотру той же вещи с обновлёнными данными
+    return await _render_current(
+        {**state, "draft_item": None},
+        edit_mode="caption",
+    )
+
+
+async def list_edit_cancel_node(state: BotState) -> dict:
+    """Отменить редактирование — вернуться к просмотру вещи."""
+    return await _render_current(
+        {**state, "draft_item": None},
+        edit_mode="caption",
+    )
 
 
 async def list_delete_node(state: BotState) -> dict:

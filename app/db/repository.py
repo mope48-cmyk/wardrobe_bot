@@ -88,3 +88,39 @@ async def count_items(user_id: int) -> int:
             select(WardrobeItem).where(WardrobeItem.user_id == user_id)
         )
         return len(result.scalars().all())
+
+
+async def update_item_field(
+    item_id: int, user_id: int, field: str, value
+) -> bool:
+    """Обновить одно поле вещи. Возвращает True, если обновилось.
+
+    Разрешены только поля из белого списка — нельзя случайно
+    перезаписать id, user_id или created_at.
+    """
+    allowed = {
+        "category", "type", "color", "warmth_level",
+        "waterproof", "formal_level", "season",
+    }
+    if field not in allowed:
+        logger.warning("Попытка обновить запрещённое поле: %s", field)
+        return False
+
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(WardrobeItem).where(
+                WardrobeItem.id == item_id,
+                WardrobeItem.user_id == user_id,
+            )
+        )
+        item = result.scalar_one_or_none()
+        if item is None:
+            return False
+
+        setattr(item, field, value)
+        await session.commit()
+        logger.info(
+            "Обновлена вещь id=%s user_id=%s: %s=%r",
+            item_id, user_id, field, value,
+        )
+        return True
