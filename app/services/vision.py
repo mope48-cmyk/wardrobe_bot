@@ -1,7 +1,7 @@
 """Распознавание одежды и определение цвета."""
 
+import colorsys
 import logging
-from collections import Counter
 from io import BytesIO
 
 from PIL import Image
@@ -143,6 +143,20 @@ LABEL_MAP = {
     "a backpack": ("рюкзак", "аксессуар"),
 }
 
+# Метки, которые означают "на фото не одежда".
+NEGATIVE_LABELS = {
+    "a landscape", "a nature scene",
+    "a room interior", "furniture",
+    "food", "a meal",
+    "an animal", "a pet",
+    "a person's face", "a portrait",
+    "a text document", "a screenshot",
+    "an empty background",
+}
+
+# Если топ-1 результат ниже этого порога — считаем распознавание неудачным.
+CONFIDENCE_THRESHOLD = 0.10
+
 # Дефолтные характеристики по русскому типу вещи.
 # Формат: тип → (warmth_level, waterproof, formal_level, season)
 TYPE_DEFAULTS = {
@@ -213,10 +227,8 @@ TYPE_DEFAULTS = {
     "рюкзак":              (1, False, "casual", "универсальная"),
 }
 
+
 # ---------- Определение цвета ----------
-
-import colorsys
-
 
 def _rgb_to_color_name(r: int, g: int, b: int) -> str:
     """Определить имя цвета по RGB через HSV.
@@ -310,6 +322,9 @@ def detect_color(image_bytes: bytes) -> tuple[str, list[str]]:
     primary = color_names[0] if color_names else "неизвестный"
     return primary, color_names[:3]
 
+
+# ---------- Распознавание одежды ----------
+
 _classifier = None
 
 
@@ -326,21 +341,51 @@ def _get_classifier():
     return _classifier
 
 
+def _build_option(en_label: str, confidence: float) -> dict | None:
+    """Собрать описание одного варианта для отображения пользователю.
+
+    Возвращает None, если метки нет в LABEL_MAP (например, это негативная
+    метка или незнакомое слово).
+    """
+    ru_type, category = LABEL_MAP.get(en_label, (None, None))
+    if ru_type is None:
+        return None
+
+    defaults = TYPE_DEFAULTS.get(ru_type, (3, False, "casual", "универсальная"))
+    warmth, waterproof, formal, season = defaults
+
+    return {
+        "type": ru_type,
+        "category": category,
+        "confidence": confidence,
+        "warmth_level": warmth,
+        "waterproof": waterproof,
+        "formal_level": formal,
+        "season": season,
+    }
+
+
 async def classify_clothing(image_bytes: bytes) -> dict:
-    """Распознать вещь и вернуть все атрибуты, включая дефолтные.
+    """Распознать вещь и вернуть топ-1 и топ-3 варианта.
 
     Возвращает:
     {
         "ok": bool,
-        "category": "верх" | "низ" | "обувь" | "аксессуар" | "другое",
-        "type": "футболка" | ...,
-        "confidence": float,
-        "color": "белый" | ...,
+        "category": ...,       # топ-1 (для совместимости)
+        "type": ...,           # топ-1
+        "confidence": ...,     # топ-1
+        "color": ...,          # определено отдельно
         "color_candidates": [...],
-        "warmth_level": int,
-        "waterproof": bool,
-        "formal_level": str,
-        "season": str,
+        "warmth_level": ...,   # дефолты для топ-1
+        "waterproof": ...,
+        "formal_level": ...,
+        "season": ...,
+        "options": [           # до 3 вариантов
+            {"type": ..., "category": ..., "confidence": ...,
+             "warmth_level": ..., "waterproof": ...,
+             "formal_level": ..., "season": ...},
+            ...
+        ],
     }
     """
     color_primary, color_candidates = detect_color(image_bytes)
@@ -364,32 +409,72 @@ async def classify_clothing(image_bytes: bytes) -> dict:
             "color_candidates": color_candidates,
         }
 
-    top = results[0]
-    en_label = top["label"]
-    confidence = float(top["score"])
+    # Собираем топ-3 валидных варианта (пропускаем негативные метки
+    # и метки без маппинга). Результаты уже отсортированы по убыванию.
+    options: list[dict] = []
+    seen_types: set[str] = set()
+    top_confidence = 0.0
 
-    ru_type, category = LABEL_MAP.get(en_label, (en_label, "другое"))
+    for r in results:
+        en_label = r["label"]
+        score = float(r["score"])
 
-    # Дефолтные характеристики по типу
-    defaults = TYPE_DEFAULTS.get(ru_type, (3, False, "casual", "универсальная"))
-    warmth, waterproof, formal, season = defaults
+        if en_label in NEGATIVE_LABELS:
+            continue
+
+        opt = _build_option(en_label, score)
+        if opt is None:
+            continue
+
+        # Дедупликация: разные английские метки могут вести
+        # на один русский тип (например, "a t-shirt" и "a plain t-shirt").
+        if opt["type"] in seen_types:
+            continue
+
+        seen_types.add(opt["type"])
+        options.append(opt)
+        if len(options) == 1:
+            top_confidence = score
+
+        if len(options) >= 3:
+            break
+
+    if not options:
+        logger.info("Нет валидных вариантов (всё негативные или низкая уверенность)")
+        return {
+            "ok": False,
+            "color": color_primary,
+            "color_candidates": color_candidates,
+        }
+
+    if top_confidence < CONFIDENCE_THRESHOLD:
+        logger.info(
+            "Топ-1 ниже порога: %.3f < %.3f",
+            top_confidence, CONFIDENCE_THRESHOLD,
+        )
+        return {
+            "ok": False,
+            "color": color_primary,
+            "color_candidates": color_candidates,
+        }
+
+    top = options[0]
 
     logger.info(
-        "Распознавание: en=%s ru=%s category=%s confidence=%.3f "
-        "color=%s warmth=%s waterproof=%s formal=%s season=%s",
-        en_label, ru_type, category, confidence,
-        color_primary, warmth, waterproof, formal, season,
+        "Распознавание: top=%s (%.3f) category=%s color=%s, всего вариантов=%d",
+        top["type"], top["confidence"], top["category"], color_primary, len(options),
     )
 
     return {
         "ok": True,
-        "category": category,
-        "type": ru_type,
-        "confidence": confidence,
+        "category": top["category"],
+        "type": top["type"],
+        "confidence": top["confidence"],
         "color": color_primary,
         "color_candidates": color_candidates,
-        "warmth_level": warmth,
-        "waterproof": waterproof,
-        "formal_level": formal,
-        "season": season,
+        "warmth_level": top["warmth_level"],
+        "waterproof": top["waterproof"],
+        "formal_level": top["formal_level"],
+        "season": top["season"],
+        "options": options,
     }

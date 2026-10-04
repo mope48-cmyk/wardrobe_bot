@@ -16,13 +16,14 @@ logger = logging.getLogger(__name__)
 # ---------- Клавиатуры ----------
 
 # Спека клавиатуры = список рядов, каждый ряд — список подписей кнопок.
+# Шага awaiting_confirm_category здесь нет: его клавиатура динамическая,
+# зависит от вариантов распознавания.
 STEP_KEYBOARDS: dict[str, list[list[str]]] = {
     "awaiting_category": [["верх", "низ"], ["обувь", "аксессуар"]],
     "awaiting_warmth": [["1", "2", "3"], ["4", "5"]],
     "awaiting_waterproof": [["да", "нет"]],
     "awaiting_formal": [["casual", "business", "sport"]],
     "awaiting_season": [["лето", "демисезон"], ["зима", "универсальная"]],
-    "awaiting_confirm_category": [["да", "нет"]],
 }
 
 OCCASION_KEYBOARD = [["работа", "прогулка"], ["спорт", "встреча"], ["другое"]]
@@ -40,7 +41,7 @@ MENU_KEYBOARD = [
 def _kb(spec) -> dict:
     """Упаковать спеку клавиатуры в additional_kwargs.
 
-    spec — список рядов (кнопки) или строка "remove" (убрать клавиатуру)
+    spec — список рядов (кнопки), или строка "remove" (убрать клавиатуру),
     или None (не трогать клавиатуру).
     """
     if spec is None:
@@ -55,6 +56,73 @@ def _kb_for_step(step: str) -> dict:
     if kb is None:
         return _kb(REMOVE_KB)
     return _kb(kb)
+
+
+def _confirm_keyboard(options: list[dict]) -> list[list[str]]:
+    """Собрать клавиатуру с кнопками типов из options.
+
+    Максимум 3 типа + кнопка "другое". Ряды по 2 кнопки,
+    чтобы длинные названия («классическая рубашка») помещались.
+    """
+    buttons = [opt["type"] for opt in options[:3]]
+    buttons.append("другое")
+
+    rows: list[list[str]] = []
+    for i in range(0, len(buttons), 2):
+        rows.append(buttons[i:i + 2])
+    return rows
+
+
+async def _persist_item(state: BotState, draft: dict) -> dict:
+    """Сохранить вещь в БД и вернуть готовый ответ для пользователя.
+
+    Используется и после подтверждения распознавания,
+    и после ручного ввода.
+    """
+    try:
+        await add_item(
+            user_id=state["user_id"],
+            photo_file_id=draft["photo_file_id"],
+            category=draft["category"],
+            type=draft["type"],
+            color=draft["color"],
+            material="",
+            warmth_level=draft["warmth_level"],
+            waterproof=draft["waterproof"],
+            formal_level=draft["formal_level"],
+            season=draft["season"],
+        )
+    except Exception as e:
+        logger.exception("Ошибка сохранения вещи")
+        return {
+            "messages": [
+                AIMessage(
+                    content=f"Не удалось сохранить: {e}",
+                    additional_kwargs=_kb(MENU_KEYBOARD),
+                )
+            ],
+            "step": None, "draft_item": None, "intent": None,
+        }
+
+    waterproof_str = "да" if draft["waterproof"] else "нет"
+    return {
+        "messages": [
+            AIMessage(
+                content=(
+                    "Готово! Сохранил вещь:\n"
+                    f"• {draft['category']} / {draft['type']}\n"
+                    f"• цвет: {draft['color']}\n"
+                    f"• тепло: {draft['warmth_level']}/5\n"
+                    f"• водонепроницаемая: {waterproof_str}\n"
+                    f"• стиль: {draft['formal_level']}\n"
+                    f"• сезон: {draft['season']}\n\n"
+                    "Добавьте ещё вещь командой /add."
+                ),
+                additional_kwargs=_kb(MENU_KEYBOARD),
+            )
+        ],
+        "step": None, "draft_item": None, "intent": None,
+    }
 
 
 # ---------- Тексты ----------
@@ -300,7 +368,7 @@ async def add_photo_node(state: BotState) -> dict:
 
     result = await classify_clothing(image_bytes)
 
-    if not result.get("ok") or result.get("category") == "другое":
+    if not result.get("ok") or not result.get("options"):
         return {
             "messages": [
                 AIMessage(
@@ -315,35 +383,33 @@ async def add_photo_node(state: BotState) -> dict:
             "draft_item": draft,
         }
 
-    draft["predicted_category"] = result["category"]
-    draft["predicted_type"] = result["type"]
+    options = result["options"]
+    draft["options"] = options
     draft["predicted_color"] = result["color"]
-    draft["predicted_warmth"] = result["warmth_level"]
-    draft["predicted_waterproof"] = result["waterproof"]
-    draft["predicted_formal"] = result["formal_level"]
-    draft["predicted_season"] = result["season"]
     draft["confidence"] = result["confidence"]
 
-    pct = int(result["confidence"] * 100)
-    waterproof_str = "да" if result["waterproof"] else "нет"
+    # Формируем список вариантов в тексте
+    lines = ["Я распознал вещь. Вот возможные типы:\n"]
+    for i, opt in enumerate(options, start=1):
+        pct = int(opt["confidence"] * 100)
+        if i == 1:
+            lines.append(f"{i}. <b>{opt['type']}</b> — {pct}%")
+        else:
+            lines.append(f"{i}. {opt['type']} — {pct}%")
+
+    lines.append("")
+    lines.append(f"Цвет: <b>{result['color']}</b>.")
+    lines.append("")
+    lines.append(
+        "Выберите тип кнопкой ниже. Если ничего не подходит — нажмите "
+        "<b>другое</b> и введите вручную."
+    )
 
     return {
         "messages": [
             AIMessage(
-                content=(
-                    "Я распознал вещь. Проверьте, всё ли верно:\n\n"
-                    f"• Категория: <b>{result['category']}</b>\n"
-                    f"• Тип: <b>{result['type']}</b>\n"
-                    f"• Цвет: <b>{result['color']}</b>\n"
-                    f"• Тепло: <b>{result['warmth_level']}/5</b>\n"
-                    f"• Водонепроницаемая: <b>{waterproof_str}</b>\n"
-                    f"• Стиль: <b>{result['formal_level']}</b>\n"
-                    f"• Сезон: <b>{result['season']}</b>\n\n"
-                    f"<i>Уверенность распознавания: {pct}%</i>\n\n"
-                    "Если всё верно — ответьте <b>да</b>, и я сразу сохраню вещь.\n"
-                    "Если нужно исправить — ответьте <b>нет</b> и введите всё вручную."
-                ),
-                additional_kwargs=_kb_for_step("awaiting_confirm_category"),
+                content="\n".join(lines),
+                additional_kwargs=_kb(_confirm_keyboard(options)),
             )
         ],
         "step": "awaiting_confirm_category",
@@ -354,62 +420,35 @@ async def add_photo_node(state: BotState) -> dict:
 async def add_confirm_category_node(state: BotState) -> dict:
     text = (state.get("input_text") or "").strip().lower()
     draft = dict(state.get("draft_item") or {})
+    options = draft.get("options") or []
 
+    # 1. Пользователь выбрал один из предложенных типов
+    for opt in options:
+        if opt["type"].lower() == text:
+            draft["category"] = opt["category"]
+            draft["type"] = opt["type"]
+            draft["color"] = draft.get("predicted_color") or ""
+            draft["warmth_level"] = opt["warmth_level"]
+            draft["waterproof"] = opt["waterproof"]
+            draft["formal_level"] = opt["formal_level"]
+            draft["season"] = opt["season"]
+            return await _persist_item(state, draft)
+
+    # 2. "да" → принять топ-1
     if text in ("да", "yes", "верно", "ага", "ok", "+"):
-        draft["category"] = draft["predicted_category"]
-        draft["type"] = draft["predicted_type"]
-        draft["color"] = draft.get("predicted_color") or ""
-        draft["warmth_level"] = draft["predicted_warmth"]
-        draft["waterproof"] = draft["predicted_waterproof"]
-        draft["formal_level"] = draft["predicted_formal"]
-        draft["season"] = draft["predicted_season"]
+        if options:
+            opt = options[0]
+            draft["category"] = opt["category"]
+            draft["type"] = opt["type"]
+            draft["color"] = draft.get("predicted_color") or ""
+            draft["warmth_level"] = opt["warmth_level"]
+            draft["waterproof"] = opt["waterproof"]
+            draft["formal_level"] = opt["formal_level"]
+            draft["season"] = opt["season"]
+            return await _persist_item(state, draft)
 
-        try:
-            await add_item(
-                user_id=state["user_id"],
-                photo_file_id=draft["photo_file_id"],
-                category=draft["category"],
-                type=draft["type"],
-                color=draft["color"],
-                material="",
-                warmth_level=draft["warmth_level"],
-                waterproof=draft["waterproof"],
-                formal_level=draft["formal_level"],
-                season=draft["season"],
-            )
-        except Exception as e:
-            logger.exception("Ошибка сохранения вещи")
-            return {
-                "messages": [
-                    AIMessage(
-                        content=f"Не удалось сохранить: {e}",
-                        additional_kwargs=_kb(MENU_KEYBOARD),
-                    )
-                ],
-                "step": None, "draft_item": None, "intent": None,
-            }
-
-        waterproof_str = "да" if draft["waterproof"] else "нет"
-        return {
-            "messages": [
-                AIMessage(
-                    content=(
-                        "Готово! Сохранил вещь:\n"
-                        f"• {draft['category']} / {draft['type']}\n"
-                        f"• цвет: {draft['color']}\n"
-                        f"• тепло: {draft['warmth_level']}/5\n"
-                        f"• водонепроницаемая: {waterproof_str}\n"
-                        f"• стиль: {draft['formal_level']}\n"
-                        f"• сезон: {draft['season']}\n\n"
-                        "Добавьте ещё вещь командой /add."
-                    ),
-                    additional_kwargs=_kb(MENU_KEYBOARD),
-                )
-            ],
-            "step": None, "draft_item": None, "intent": None,
-        }
-
-    if text in ("нет", "no", "неверно", "-"):
+    # 3. "другое" или "нет" → ручной ввод
+    if text in ("другое", "нет", "no", "неверно", "-"):
         return {
             "messages": [
                 AIMessage(
@@ -425,11 +464,14 @@ async def add_confirm_category_node(state: BotState) -> dict:
             "draft_item": draft,
         }
 
+    # 4. Ничего не подошло — повторить
     return {
         "messages": [
             AIMessage(
-                content="Ответьте <b>да</b> (сохранить) или <b>нет</b> (ввести заново).",
-                additional_kwargs=_kb_for_step("awaiting_confirm_category"),
+                content=(
+                    "Выберите тип из кнопок ниже или нажмите <b>другое</b>."
+                ),
+                additional_kwargs=_kb(_confirm_keyboard(options)),
             )
         ],
     }
@@ -449,50 +491,7 @@ async def add_attribute_node(state: BotState) -> dict:
     draft[STEP_TO_FIELD[step]] = value
 
     if step == "awaiting_season":
-        try:
-            await add_item(
-                user_id=state["user_id"],
-                photo_file_id=draft["photo_file_id"],
-                category=draft["category"],
-                type=draft["type"],
-                color=draft["color"],
-                material="",
-                warmth_level=draft["warmth_level"],
-                waterproof=draft["waterproof"],
-                formal_level=draft["formal_level"],
-                season=draft["season"],
-            )
-        except Exception as e:
-            logger.exception("Ошибка сохранения вещи")
-            return {
-                "messages": [
-                    AIMessage(
-                        content=f"Не удалось сохранить: {e}",
-                        additional_kwargs=_kb(MENU_KEYBOARD),
-                    )
-                ],
-                "step": None, "draft_item": None, "intent": None,
-            }
-
-        waterproof_str = "да" if draft["waterproof"] else "нет"
-        return {
-            "messages": [
-                AIMessage(
-                    content=(
-                        "Готово! Сохранил вещь:\n"
-                        f"• {draft['category']} / {draft['type']}\n"
-                        f"• цвет: {draft['color']}\n"
-                        f"• тепло: {draft['warmth_level']}/5\n"
-                        f"• водонепроницаемая: {waterproof_str}\n"
-                        f"• стиль: {draft['formal_level']}\n"
-                        f"• сезон: {draft['season']}\n\n"
-                        "Добавьте ещё вещь командой /add."
-                    ),
-                    additional_kwargs=_kb(MENU_KEYBOARD),
-                )
-            ],
-            "step": None, "draft_item": None, "intent": None,
-        }
+        return await _persist_item(state, draft)
 
     next_step, question = NEXT_STEP[step]
     return {
