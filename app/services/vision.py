@@ -4,12 +4,14 @@ import colorsys
 import logging
 from io import BytesIO
 
+import open_clip
+import torch
 from PIL import Image
-from transformers import pipeline
 
 logger = logging.getLogger(__name__)
 
-MODEL_ID = "patrickjohncyh/fashion-clip"
+MODEL_NAME = "MobileCLIP2-S0"
+PRETRAINED = "dfndr2b"  # Идентификатор предобученных весов
 
 # Расширенный список английских меток.
 ENGLISH_LABELS = [
@@ -325,20 +327,23 @@ def detect_color(image_bytes: bytes) -> tuple[str, list[str]]:
 
 # ---------- Распознавание одежды ----------
 
-_classifier = None
+_model = None
+_preprocess = None
+_tokenizer = None
 
 
-def _get_classifier():
-    global _classifier
-    if _classifier is None:
-        logger.info("Загружаем модель %s...", MODEL_ID)
-        _classifier = pipeline(
-            task="zero-shot-image-classification",
-            model=MODEL_ID,
-            device=-1,
+def _get_model():
+    """Ленивая загрузка модели при первом вызове."""
+    global _model, _preprocess, _tokenizer
+    if _model is None:
+        logger.info("Загружаем модель %s...", MODEL_NAME)
+        _model, _, _preprocess = open_clip.create_model_and_transforms(
+            MODEL_NAME, pretrained=PRETRAINED
         )
+        _model.eval()
+        _tokenizer = open_clip.get_tokenizer(MODEL_NAME)
         logger.info("Модель загружена")
-    return _classifier
+    return _model, _preprocess, _tokenizer
 
 
 def _build_option(en_label: str, confidence: float) -> dict | None:
@@ -391,9 +396,33 @@ async def classify_clothing(image_bytes: bytes) -> dict:
     color_primary, color_candidates = detect_color(image_bytes)
 
     try:
+        model, preprocess, tokenizer = _get_model()
+
+        # Подготовка изображения
         image = Image.open(BytesIO(image_bytes)).convert("RGB")
-        classifier = _get_classifier()
-        results = classifier(image, candidate_labels=ENGLISH_LABELS)
+        image_input = preprocess(image).unsqueeze(0)
+
+        # Токенизация меток
+        text_inputs = tokenizer(ENGLISH_LABELS)
+
+        # Инференс
+        with torch.no_grad():
+            image_features = model.encode_image(image_input)
+            text_features = model.encode_text(text_inputs)
+
+            image_features /= image_features.norm(dim=-1, keepdim=True)
+            text_features /= text_features.norm(dim=-1, keepdim=True)
+
+            similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1)
+
+        # Получаем вероятности
+        probs = similarity[0].tolist()
+        results = [
+            {"label": label, "score": prob}
+            for label, prob in zip(ENGLISH_LABELS, probs)
+        ]
+        results.sort(key=lambda x: x["score"], reverse=True)
+
     except Exception:
         logger.exception("Ошибка классификации")
         return {
