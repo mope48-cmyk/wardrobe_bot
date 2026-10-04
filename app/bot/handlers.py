@@ -3,7 +3,12 @@
 import logging
 
 from aiogram import Router
-from aiogram.types import Message
+from aiogram.types import (
+    KeyboardButton,
+    Message,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+)
 from langchain_core.messages import HumanMessage
 
 from app.graph.builder import build_graph
@@ -51,19 +56,47 @@ async def _extract_input(message: Message) -> dict:
     }
 
 
+def _build_reply_markup(spec):
+    """Собрать ReplyKeyboardMarkup из спеки или ReplyKeyboardRemove.
+
+    spec:
+      - список рядов (list[list[str]]) → обычная клавиатура
+      - строка "remove" → удалить клавиатуру
+      - None / отсутствует → ничего не менять
+    """
+    if spec == "remove":
+        return ReplyKeyboardRemove()
+    if not spec:
+        return None
+    rows = [[KeyboardButton(text=t) for t in row] for row in spec]
+    return ReplyKeyboardMarkup(
+        keyboard=rows,
+        resize_keyboard=True,
+        one_time_keyboard=False,
+    )
+
+
 async def _send_ai_message(message: Message, ai_msg) -> None:
     """Отправить одно сообщение ассистента: фото или текст."""
     photo_file_id = None
+    reply_markup = None
     if getattr(ai_msg, "additional_kwargs", None):
         photo_file_id = ai_msg.additional_kwargs.get("photo_file_id")
+        reply_markup = _build_reply_markup(
+            ai_msg.additional_kwargs.get("reply_keyboard")
+        )
 
     if photo_file_id:
         try:
-            await message.answer_photo(photo=photo_file_id, caption=ai_msg.content)
+            await message.answer_photo(
+                photo=photo_file_id,
+                caption=ai_msg.content,
+                reply_markup=reply_markup,
+            )
             return
         except Exception:
             logger.exception("Не удалось отправить фото, шлю текстом")
-    await message.answer(ai_msg.content)
+    await message.answer(ai_msg.content, reply_markup=reply_markup)
 
 
 @router.message()

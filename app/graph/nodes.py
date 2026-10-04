@@ -5,13 +5,52 @@ import logging
 from langchain_core.messages import AIMessage
 
 from app.db.repository import add_item, get_items
-from app.services.outfit import select_outfit
-from app.services.weather import geocode_city, get_weather
 from app.graph.state import BotState
+from app.services.outfit import select_outfit
 from app.services.vision import classify_clothing
+from app.services.weather import geocode_city, get_weather
 
 logger = logging.getLogger(__name__)
 
+
+# ---------- Клавиатуры ----------
+
+# Спека клавиатуры = список рядов, каждый ряд — список подписей кнопок.
+STEP_KEYBOARDS: dict[str, list[list[str]]] = {
+    "awaiting_category": [["верх", "низ"], ["обувь", "аксессуар"]],
+    "awaiting_warmth": [["1", "2", "3"], ["4", "5"]],
+    "awaiting_waterproof": [["да", "нет"]],
+    "awaiting_formal": [["casual", "business", "sport"]],
+    "awaiting_season": [["лето", "демисезон"], ["зима", "универсальная"]],
+    "awaiting_confirm_category": [["да", "нет"]],
+}
+
+OCCASION_KEYBOARD = [["работа", "прогулка"], ["спорт", "встреча"], ["другое"]]
+
+REMOVE_KB = "remove"
+
+
+def _kb(spec) -> dict:
+    """Упаковать спеку клавиатуры в additional_kwargs.
+
+    spec — список рядов (кнопки) или строка "remove" (убрать клавиатуру)
+    или None (не трогать клавиатуру).
+    """
+    if spec is None:
+        return {}
+    return {"reply_keyboard": spec}
+
+
+def _kb_for_step(step: str) -> dict:
+    """Клавиатура для конкретного шага. Если для шага кнопок нет —
+    просим убрать клавиатуру, чтобы не оставалась старая."""
+    kb = STEP_KEYBOARDS.get(step)
+    if kb is None:
+        return _kb(REMOVE_KB)
+    return _kb(kb)
+
+
+# ---------- Тексты ----------
 
 WELCOME_TEXT = (
     "Привет! Я помогу каталогизировать твой гардероб "
@@ -33,10 +72,12 @@ HELP_TEXT = (
 )
 
 
+# ---------- Статические команды ----------
+
 async def start_node(state: BotState) -> dict:
     logger.info("start_node: user_id=%s", state.get("user_id"))
     return {
-        "messages": [AIMessage(content=WELCOME_TEXT)],
+        "messages": [AIMessage(content=WELCOME_TEXT, additional_kwargs=_kb(REMOVE_KB))],
         "intent": None, "step": None, "draft_item": None,
     }
 
@@ -47,7 +88,12 @@ async def help_node(state: BotState) -> dict:
 
 async def cancel_node(state: BotState) -> dict:
     return {
-        "messages": [AIMessage(content="Хорошо, отменил. Что делаем дальше?")],
+        "messages": [
+            AIMessage(
+                content="Хорошо, отменил. Что делаем дальше?",
+                additional_kwargs=_kb(REMOVE_KB),
+            )
+        ],
         "intent": None, "step": None, "draft_item": None,
     }
 
@@ -59,8 +105,10 @@ async def fallback_node(state: BotState) -> dict:
 async def stub_node(state: BotState) -> dict:
     return {"messages": [AIMessage(content="Эта команда появится позже.")]}
 
+
+# ---------- /list ----------
+
 async def list_node(state: BotState) -> dict:
-    """Показать все вещи пользователя."""
     user_id = state["user_id"]
     items = await get_items(user_id)
 
@@ -71,12 +119,11 @@ async def list_node(state: BotState) -> dict:
                     content=(
                         "Ваш гардероб пока пуст.\n\n"
                         "Добавьте первую вещь командой /add."
-                    )
+                    ),
+                    additional_kwargs=_kb(REMOVE_KB),
                 )
             ],
-            "step": None,
-            "intent": None,
-            "draft_item": None,
+            "step": None, "intent": None, "draft_item": None,
         }
 
     total = len(items)
@@ -92,9 +139,6 @@ async def list_node(state: BotState) -> dict:
             f"{waterproof_mark}тепло: {item.warmth_level}/5, "
             f"стиль: {item.formal_level}, сезон: {item.season}"
         )
-
-        # additional_kwargs — специальное поле LangChain-сообщений.
-        # Обработчик aiogram прочитает его и отправит фото вместо текста.
         messages.append(
             AIMessage(
                 content=caption,
@@ -104,10 +148,9 @@ async def list_node(state: BotState) -> dict:
 
     return {
         "messages": messages,
-        "step": None,
-        "intent": None,
-        "draft_item": None,
+        "step": None, "intent": None, "draft_item": None,
     }
+
 
 # ---------- /add ----------
 
@@ -137,7 +180,7 @@ NEXT_STEP = {
     ),
     "awaiting_warmth": (
         "awaiting_waterproof",
-        "Вещь водонепроницаемая? Напишите да или нет:",
+        "Эта вещь промокнет под дождём?",
     ),
     "awaiting_waterproof": (
         "awaiting_formal",
@@ -179,10 +222,13 @@ def _validate_answer(step: str, text: str) -> tuple[bool, object, str]:
         return False, None, "Введите число от 1 до 5."
 
     if step == "awaiting_waterproof":
+        # Вопрос: "Эта вещь промокнет под дождём?"
+        # "да" (промокнет) → waterproof = False
+        # "нет" (не промокнет) → waterproof = True
         if lower in ("да", "yes", "true", "1"):
-            return True, True, ""
-        if lower in ("нет", "no", "false", "0"):
             return True, False, ""
+        if lower in ("нет", "no", "false", "0"):
+            return True, True, ""
         return False, None, "Ответьте да или нет."
 
     if step == "awaiting_formal":
@@ -200,7 +246,12 @@ def _validate_answer(step: str, text: str) -> tuple[bool, object, str]:
 
 async def add_start_node(state: BotState) -> dict:
     return {
-        "messages": [AIMessage(content="Пришлите, пожалуйста, фотографию вещи.")],
+        "messages": [
+            AIMessage(
+                content="Пришлите, пожалуйста, фотографию вещи.",
+                additional_kwargs=_kb(REMOVE_KB),
+            )
+        ],
         "intent": "add", "step": "awaiting_photo", "draft_item": {},
     }
 
@@ -214,7 +265,6 @@ async def add_expect_photo_node(state: BotState) -> dict:
 
 
 async def add_photo_node(state: BotState) -> dict:
-    """Фото получено: распознаём и предлагаем все атрибуты сразу."""
     file_id = state.get("input_photo_file_id")
     image_bytes = state.get("input_photo_bytes")
 
@@ -227,9 +277,9 @@ async def add_photo_node(state: BotState) -> dict:
                 AIMessage(
                     content=(
                         "Не удалось обработать фото.\n\n"
-                        "Что это за вещь? Напишите: <b>верх</b>, <b>низ</b>, "
-                        "<b>обувь</b> или <b>аксессуар</b>."
-                    )
+                        "Что это за вещь? Напишите категорию или выберите:"
+                    ),
+                    additional_kwargs=_kb_for_step("awaiting_category"),
                 )
             ],
             "step": "awaiting_category",
@@ -244,16 +294,15 @@ async def add_photo_node(state: BotState) -> dict:
                 AIMessage(
                     content=(
                         "Не смог распознать вещь на фото.\n\n"
-                        "Что это за вещь? Напишите: <b>верх</b>, <b>низ</b>, "
-                        "<b>обувь</b> или <b>аксессуар</b>."
-                    )
+                        "Что это за вещь? Напишите категорию или выберите:"
+                    ),
+                    additional_kwargs=_kb_for_step("awaiting_category"),
                 )
             ],
             "step": "awaiting_category",
             "draft_item": draft,
         }
 
-    # Сохраняем всё предсказание в draft
     draft["predicted_category"] = result["category"]
     draft["predicted_type"] = result["type"]
     draft["predicted_color"] = result["color"]
@@ -281,88 +330,8 @@ async def add_photo_node(state: BotState) -> dict:
                     f"<i>Уверенность распознавания: {pct}%</i>\n\n"
                     "Если всё верно — ответьте <b>да</b>, и я сразу сохраню вещь.\n"
                     "Если нужно исправить — ответьте <b>нет</b> и введите всё вручную."
-                )
-            )
-        ],
-        "step": "awaiting_confirm_category",
-        "draft_item": draft,
-    }
-
-    result = await classify_clothing(image_bytes)
-
-    # Цвет всегда есть — даже если CLIP не смог распознать вещь
-    draft["predicted_color"] = result.get("color")
-
-    if not result.get("ok") or result.get("category") == "другое":
-        return {
-            "messages": [
-                AIMessage(
-                    content=(
-                        "Не смог распознать вещь на фото.\n\n"
-                        "Что это за вещь? Напишите: <b>верх</b>, <b>низ</b>, "
-                        "<b>обувь</b> или <b>аксессуар</b>."
-                    )
-                )
-            ],
-            "step": "awaiting_category",
-            "draft_item": draft,
-        }
-
-    draft["predicted_category"] = result["category"]
-    draft["predicted_type"] = result["type"]
-    draft["confidence"] = result["confidence"]
-
-    confidence_pct = int(result["confidence"] * 100)
-    return {
-        "messages": [
-            AIMessage(
-                content=(
-                    f"Похоже, это <b>{result['type']}</b> "
-                    f"(категория: <b>{result['category']}</b>, "
-                    f"цвет: <b>{result['color']}</b>, "
-                    f"уверенность: {confidence_pct}%).\n\n"
-                    "Всё верно? Ответьте <b>да</b> или <b>нет</b>."
-                )
-            )
-        ],
-        "step": "awaiting_confirm_category",
-        "draft_item": draft,
-    }
-
-    # Распознавание
-    result = await classify_clothing(image_bytes)
-
-    if not result.get("ok") or result["category"] == "другое":
-        # Распознавание не удалось — ручной ввод
-        return {
-            "messages": [
-                AIMessage(
-                    content=(
-                        "Не смог распознать вещь на фото.\n\n"
-                        "Что это за вещь? Напишите: <b>верх</b>, <b>низ</b>, "
-                        "<b>обувь</b> или <b>аксессуар</b>."
-                    )
-                )
-            ],
-            "step": "awaiting_category",
-            "draft_item": draft,
-        }
-
-    # Сохраняем предсказание в черновик
-    draft["predicted_category"] = result["category"]
-    draft["predicted_type"] = result["type"]
-    draft["confidence"] = result["confidence"]
-
-    confidence_pct = int(result["confidence"] * 100)
-    return {
-        "messages": [
-            AIMessage(
-                content=(
-                    f"Похоже, это <b>{result['type']}</b> "
-                    f"(категория: <b>{result['category']}</b>, "
-                    f"уверенность: {confidence_pct}%).\n\n"
-                    "Всё верно? Ответьте <b>да</b> или <b>нет</b>."
-                )
+                ),
+                additional_kwargs=_kb_for_step("awaiting_confirm_category"),
             )
         ],
         "step": "awaiting_confirm_category",
@@ -371,12 +340,10 @@ async def add_photo_node(state: BotState) -> dict:
 
 
 async def add_confirm_category_node(state: BotState) -> dict:
-    """Подтверждение всех предсказанных атрибутов и сохранение вещи."""
     text = (state.get("input_text") or "").strip().lower()
     draft = dict(state.get("draft_item") or {})
 
     if text in ("да", "yes", "верно", "ага", "ok", "+"):
-        # Переносим всё предсказание в финальные поля
         draft["category"] = draft["predicted_category"]
         draft["type"] = draft["predicted_type"]
         draft["color"] = draft.get("predicted_color") or ""
@@ -401,7 +368,12 @@ async def add_confirm_category_node(state: BotState) -> dict:
         except Exception as e:
             logger.exception("Ошибка сохранения вещи")
             return {
-                "messages": [AIMessage(content=f"Не удалось сохранить: {e}")],
+                "messages": [
+                    AIMessage(
+                        content=f"Не удалось сохранить: {e}",
+                        additional_kwargs=_kb(REMOVE_KB),
+                    )
+                ],
                 "step": None, "draft_item": None, "intent": None,
             }
 
@@ -418,7 +390,8 @@ async def add_confirm_category_node(state: BotState) -> dict:
                         f"• стиль: {draft['formal_level']}\n"
                         f"• сезон: {draft['season']}\n\n"
                         "Добавьте ещё вещь командой /add."
-                    )
+                    ),
+                    additional_kwargs=_kb(REMOVE_KB),
                 )
             ],
             "step": None, "draft_item": None, "intent": None,
@@ -432,7 +405,8 @@ async def add_confirm_category_node(state: BotState) -> dict:
                         "Хорошо, вводим вручную.\n\n"
                         "Категория: <b>верх</b>, <b>низ</b>, <b>обувь</b> "
                         "или <b>аксессуар</b>?"
-                    )
+                    ),
+                    additional_kwargs=_kb_for_step("awaiting_category"),
                 )
             ],
             "step": "awaiting_category",
@@ -442,10 +416,8 @@ async def add_confirm_category_node(state: BotState) -> dict:
     return {
         "messages": [
             AIMessage(
-                content=(
-                    "Ответьте <b>да</b> (сохранить) или <b>нет</b> "
-                    "(ввести заново)."
-                )
+                content="Ответьте <b>да</b> (сохранить) или <b>нет</b> (ввести заново).",
+                additional_kwargs=_kb_for_step("awaiting_confirm_category"),
             )
         ],
     }
@@ -464,7 +436,6 @@ async def add_attribute_node(state: BotState) -> dict:
     draft = dict(state.get("draft_item") or {})
     draft[STEP_TO_FIELD[step]] = value
 
-    # Последний шаг — сохраняем
     if step == "awaiting_season":
         try:
             await add_item(
@@ -482,10 +453,16 @@ async def add_attribute_node(state: BotState) -> dict:
         except Exception as e:
             logger.exception("Ошибка сохранения вещи")
             return {
-                "messages": [AIMessage(content=f"Не удалось сохранить: {e}")],
+                "messages": [
+                    AIMessage(
+                        content=f"Не удалось сохранить: {e}",
+                        additional_kwargs=_kb(REMOVE_KB),
+                    )
+                ],
                 "step": None, "draft_item": None, "intent": None,
             }
 
+        waterproof_str = "да" if draft["waterproof"] else "нет"
         return {
             "messages": [
                 AIMessage(
@@ -494,12 +471,12 @@ async def add_attribute_node(state: BotState) -> dict:
                         f"• {draft['category']} / {draft['type']}\n"
                         f"• цвет: {draft['color']}\n"
                         f"• тепло: {draft['warmth_level']}/5\n"
-                        f"• водонепроницаемая: "
-                        f"{'да' if draft['waterproof'] else 'нет'}\n"
+                        f"• водонепроницаемая: {waterproof_str}\n"
                         f"• стиль: {draft['formal_level']}\n"
                         f"• сезон: {draft['season']}\n\n"
                         "Добавьте ещё вещь командой /add."
-                    )
+                    ),
+                    additional_kwargs=_kb(REMOVE_KB),
                 )
             ],
             "step": None, "draft_item": None, "intent": None,
@@ -507,26 +484,32 @@ async def add_attribute_node(state: BotState) -> dict:
 
     next_step, question = NEXT_STEP[step]
     return {
-        "messages": [AIMessage(content=question)],
+        "messages": [
+            AIMessage(
+                content=question,
+                additional_kwargs=_kb_for_step(next_step),
+            )
+        ],
         "step": next_step,
         "draft_item": draft,
     }
+
+
 # ---------- /outfit ----------
 
 VALID_OCCASIONS = {"работа", "прогулка", "спорт", "встреча", "другое"}
 
 
 async def outfit_start_node(state: BotState) -> dict:
-    """/outfit — запрашиваем местоположение."""
     return {
         "messages": [
             AIMessage(
                 content=(
-                    "Чтобы подобрать комплект, мне нужно знать, где вы "
-                    "находитесь.\n\n"
+                    "Чтобы подобрать комплект, мне нужно знать, где вы находитесь.\n\n"
                     "Отправьте <b>геолокацию</b> (скрепка → Геопозиция) "
                     "или напишите название города."
-                )
+                ),
+                additional_kwargs=_kb(REMOVE_KB),
             )
         ],
         "intent": "outfit",
@@ -540,7 +523,6 @@ async def outfit_start_node(state: BotState) -> dict:
 
 
 async def outfit_location_node(state: BotState) -> dict:
-    """Обработка геолокации или названия города."""
     loc = state.get("input_location")
     text = (state.get("input_text") or "").strip()
 
@@ -574,9 +556,9 @@ async def outfit_location_node(state: BotState) -> dict:
             AIMessage(
                 content=(
                     "Понял.\n\n"
-                    "Какой повод? Варианты: <b>работа</b>, <b>прогулка</b>, "
-                    "<b>спорт</b>, <b>встреча</b>, <b>другое</b>."
-                )
+                    "Какой повод? Выберите один из вариантов."
+                ),
+                additional_kwargs=_kb(OCCASION_KEYBOARD),
             )
         ],
         "step": "awaiting_occasion",
@@ -585,7 +567,6 @@ async def outfit_location_node(state: BotState) -> dict:
 
 
 async def outfit_occasion_node(state: BotState) -> dict:
-    """Обработка повода, получение погоды, подбор и отправка."""
     text = (state.get("input_text") or "").strip().lower()
 
     if text not in VALID_OCCASIONS:
@@ -593,9 +574,10 @@ async def outfit_occasion_node(state: BotState) -> dict:
             "messages": [
                 AIMessage(
                     content=(
-                        "Выберите: <b>работа</b>, <b>прогулка</b>, "
-                        "<b>спорт</b>, <b>встреча</b> или <b>другое</b>."
-                    )
+                        "Выберите повод из предложенных вариантов "
+                        "(или /cancel для отмены)."
+                    ),
+                    additional_kwargs=_kb(OCCASION_KEYBOARD),
                 )
             ],
         }
@@ -605,10 +587,8 @@ async def outfit_occasion_node(state: BotState) -> dict:
         return {
             "messages": [
                 AIMessage(
-                    content=(
-                        "Что-то пошло не так с местоположением. "
-                        "Начните заново: /outfit."
-                    )
+                    content="Что-то пошло не так с местоположением. Начните заново: /outfit.",
+                    additional_kwargs=_kb(REMOVE_KB),
                 )
             ],
             "step": None, "intent": None,
@@ -619,10 +599,8 @@ async def outfit_occasion_node(state: BotState) -> dict:
         return {
             "messages": [
                 AIMessage(
-                    content=(
-                        "Не удалось получить погоду. "
-                        "Попробуйте позже или начните заново: /outfit."
-                    )
+                    content="Не удалось получить погоду. Попробуйте позже или начните заново: /outfit.",
+                    additional_kwargs=_kb(REMOVE_KB),
                 )
             ],
             "step": None, "intent": None, "location": None,
@@ -636,7 +614,8 @@ async def outfit_occasion_node(state: BotState) -> dict:
                     content=(
                         "Ваш гардероб пуст. Добавьте вещи через /add, "
                         "затем повторите /outfit."
-                    )
+                    ),
+                    additional_kwargs=_kb(REMOVE_KB),
                 )
             ],
             "step": None, "intent": None, "location": None,
@@ -648,10 +627,7 @@ async def outfit_occasion_node(state: BotState) -> dict:
     city_str = f" ({loc['city']})" if loc.get("city") else ""
     temp = weather["temp"]
     desc = weather["description"]
-    header = (
-        f"Погода{city_str}: {desc}, {temp:.0f}°C.\n"
-        f"Повод: {text}."
-    )
+    header = f"Погода{city_str}: {desc}, {temp:.0f}°C.\nПовод: {text}."
 
     if not outfit:
         return {
@@ -659,9 +635,10 @@ async def outfit_occasion_node(state: BotState) -> dict:
                 AIMessage(
                     content=(
                         f"{header}\n\n"
-                        "К сожалению, в вашем гардеробе нет подходящих "
-                        "вещей. Добавьте их через /add."
-                    )
+                        "К сожалению, в вашем гардеробе нет подходящих вещей. "
+                        "Добавьте их через /add."
+                    ),
+                    additional_kwargs=_kb(REMOVE_KB),
                 )
             ],
             "step": None, "intent": None, "location": None,
@@ -686,6 +663,14 @@ async def outfit_occasion_node(state: BotState) -> dict:
                 additional_kwargs={"photo_file_id": item.photo_file_id},
             )
         )
+
+    # Финальное сообщение с клавиатурой "убрать"
+    messages.append(
+        AIMessage(
+            content="Если хотите — подберите ещё раз: /outfit.",
+            additional_kwargs=_kb(REMOVE_KB),
+        )
+    )
 
     return {
         "messages": messages,
