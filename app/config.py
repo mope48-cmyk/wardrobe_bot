@@ -9,6 +9,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+# Hugging Face Spaces монтирует постоянное хранилище в /data
+if os.path.exists("/data"):
+    DATABASE_URL_DEFAULT = "sqlite+aiosqlite:////data/wardrobe.db"
+else:
+    DATABASE_URL_DEFAULT = "sqlite+aiosqlite:///./data/wardrobe.db"
+
+
 @dataclass(frozen=True)
 class Settings:
     """Настройки приложения. Значения читаются из .env один раз при импорте."""
@@ -36,9 +43,7 @@ def load_settings() -> Settings:
         BOT_TOKEN=bot_token,
         HF_TOKEN=_get_env("HF_TOKEN"),
         OWM_API_KEY=_get_env("OWM_API_KEY"),
-        DATABASE_URL=_get_env(
-            "DATABASE_URL", "sqlite+aiosqlite:///./data/wardrobe.db"
-        ),
+        DATABASE_URL=_get_env("DATABASE_URL", DATABASE_URL_DEFAULT),
     )
 
 

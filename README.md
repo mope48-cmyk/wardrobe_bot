@@ -1,3 +1,12 @@
+---
+title: Wardrobe Bot
+emoji: 👔
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+---
+
 # Wardrobe Bot
 
 Telegram-бот для каталогизации одежды и подбора гардероба по погоде.
