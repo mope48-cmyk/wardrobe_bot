@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 MODEL_NAME = "MobileCLIP2-S0"
 PRETRAINED = "dfndr2b"
 
-# Расширенный список английских меток.
+
+# ---------- Английские метки ----------
+
 ENGLISH_LABELS = [
     # Верхняя одежда
     "a jacket", "a casual jacket", "a winter jacket",
@@ -68,9 +70,7 @@ ENGLISH_LABELS = [
     "an empty background",
 ]
 
-# Английская метка → (русский тип, категория)
 LABEL_MAP = {
-    # Верхняя одежда
     "a jacket": ("куртка", "верх"),
     "a casual jacket": ("куртка", "верх"),
     "a winter jacket": ("зимняя куртка", "верх"),
@@ -86,7 +86,6 @@ LABEL_MAP = {
     "a denim jacket": ("джинсовая куртка", "верх"),
     "a suit jacket": ("пиджак", "верх"),
     "a blazer": ("блейзер", "верх"),
-    # Свитеры и лёгкий верх
     "a sweater": ("свитер", "верх"),
     "a knitted sweater": ("вязаный свитер", "верх"),
     "a wool sweater": ("шерстяной свитер", "верх"),
@@ -96,7 +95,6 @@ LABEL_MAP = {
     "a cardigan": ("кардиган", "верх"),
     "a vest": ("жилет", "верх"),
     "a sleeveless vest": ("безрукавка", "верх"),
-    # Рубашки и лёгкие
     "a shirt": ("рубашка", "верх"),
     "a button-up shirt": ("рубашка", "верх"),
     "a dress shirt": ("классическая рубашка", "верх"),
@@ -109,7 +107,6 @@ LABEL_MAP = {
     "a dress": ("платье", "верх"),
     "a summer dress": ("летнее платье", "верх"),
     "a long dress": ("длинное платье", "верх"),
-    # Низ
     "trousers": ("брюки", "низ"),
     "dress pants": ("классические брюки", "низ"),
     "casual trousers": ("повседневные брюки", "низ"),
@@ -119,7 +116,6 @@ LABEL_MAP = {
     "a skirt": ("юбка", "низ"),
     "leggings": ("леггинсы", "низ"),
     "sweatpants": ("спортивные штаны", "низ"),
-    # Обувь
     "sneakers": ("кроссовки", "обувь"),
     "running shoes": ("беговые кроссовки", "обувь"),
     "boots": ("ботинки", "обувь"),
@@ -131,7 +127,6 @@ LABEL_MAP = {
     "sandals": ("сандалии", "обувь"),
     "heels": ("каблуки", "обувь"),
     "high heels": ("высокие каблуки", "обувь"),
-    # Аксессуары
     "a hat": ("шляпа", "аксессуар"),
     "a winter hat": ("зимняя шапка", "аксессуар"),
     "a beanie": ("шапка-бини", "аксессуар"),
@@ -145,7 +140,6 @@ LABEL_MAP = {
     "a backpack": ("рюкзак", "аксессуар"),
 }
 
-# Метки, которые означают "на фото не одежда".
 NEGATIVE_LABELS = {
     "a landscape", "a nature scene",
     "a room interior", "furniture",
@@ -156,13 +150,9 @@ NEGATIVE_LABELS = {
     "an empty background",
 }
 
-# Если топ-1 результат ниже этого порога — считаем распознавание неудачным.
 CONFIDENCE_THRESHOLD = 0.10
 
-# Дефолтные характеристики по русскому типу вещи.
-# Формат: тип → (warmth_level, waterproof, formal_level, season)
 TYPE_DEFAULTS = {
-    # Верхняя одежда
     "куртка":              (4, False, "casual", "демисезон"),
     "зимняя куртка":       (5, True,  "casual", "зима"),
     "пальто":              (4, False, "business", "зима"),
@@ -175,7 +165,6 @@ TYPE_DEFAULTS = {
     "джинсовая куртка":    (3, False, "casual", "демисезон"),
     "пиджак":              (3, False, "business", "универсальная"),
     "блейзер":             (3, False, "business", "универсальная"),
-    # Свитеры и лёгкий верх
     "свитер":              (4, False, "casual", "зима"),
     "вязаный свитер":      (4, False, "casual", "зима"),
     "шерстяной свитер":    (5, False, "casual", "зима"),
@@ -184,7 +173,6 @@ TYPE_DEFAULTS = {
     "кардиган":            (3, False, "casual", "демисезон"),
     "жилет":               (2, False, "casual", "демисезон"),
     "безрукавка":          (2, False, "casual", "демисезон"),
-    # Рубашки и лёгкие
     "рубашка":             (2, False, "business", "универсальная"),
     "классическая рубашка": (2, False, "business", "универсальная"),
     "футболка":            (1, False, "casual", "лето"),
@@ -195,7 +183,6 @@ TYPE_DEFAULTS = {
     "платье":              (2, False, "business", "лето"),
     "летнее платье":       (1, False, "casual", "лето"),
     "длинное платье":      (2, False, "business", "универсальная"),
-    # Низ
     "брюки":               (3, False, "business", "универсальная"),
     "классические брюки":  (3, False, "business", "универсальная"),
     "повседневные брюки":  (3, False, "casual", "универсальная"),
@@ -204,7 +191,6 @@ TYPE_DEFAULTS = {
     "юбка":                (2, False, "casual", "лето"),
     "леггинсы":            (2, False, "sport", "демисезон"),
     "спортивные штаны":    (2, False, "sport", "демисезон"),
-    # Обувь
     "кроссовки":           (2, False, "sport", "демисезон"),
     "беговые кроссовки":   (2, False, "sport", "лето"),
     "ботинки":             (3, True,  "casual", "демисезон"),
@@ -216,7 +202,6 @@ TYPE_DEFAULTS = {
     "сандалии":            (1, False, "casual", "лето"),
     "каблуки":             (2, False, "business", "универсальная"),
     "высокие каблуки":     (2, False, "business", "универсальная"),
-    # Аксессуары
     "шляпа":               (2, False, "casual", "лето"),
     "зимняя шапка":        (4, False, "casual", "зима"),
     "шапка-бини":          (4, False, "casual", "зима"),
@@ -232,55 +217,33 @@ TYPE_DEFAULTS = {
 
 # ---------- Определение цвета ----------
 
-def _auto_white_balance(img: Image.Image) -> Image.Image:
-    """Gray-world: выравниваем средние значения каналов.
-
-    Снимает цветовой сдвиг от освещения — лампа накаливания (тёплый свет)
-    и уличный день (холодный) приводят к искажению, из-за которого
-    алгоритм видит серый там, где на самом деле цвет.
-    """
-    pixels = list(img.getdata())
-    if not pixels:
-        return img
-
-    n = len(pixels)
-    r_avg = sum(p[0] for p in pixels) / n
-    g_avg = sum(p[1] for p in pixels) / n
-    b_avg = sum(p[2] for p in pixels) / n
-    gray = (r_avg + g_avg + b_avg) / 3
-
-    r_scale = gray / max(r_avg, 1)
-    g_scale = gray / max(g_avg, 1)
-    b_scale = gray / max(b_avg, 1)
-
-    out = Image.new("RGB", img.size)
-    out.putdata([
-        (
-            min(255, int(p[0] * r_scale)),
-            min(255, int(p[1] * g_scale)),
-            min(255, int(p[2] * b_scale)),
-        )
-        for p in pixels
-    ])
-    return out
-
-
 def _rgb_to_color_name(r: int, g: int, b: int) -> str:
-    """Развёрнутая классификация цвета по HSV.
+    """Классификация цвета по HSV.
 
-    Принципы:
-      - порог «серых» снижен с 15% до 10% (многие цвета умеренно насыщены);
-      - добавлены промежуточные оттенки (тёмно-серый, светло-серый, navy,
-        оливковый, горчичный, хаки, терракотовый, кремовый и т.д.);
-      - коричневый и бежевый выделяются из оранжевого/жёлтого
-        по яркости и насыщенности.
+    Порядок проверок важен:
+      1. Ахроматические (низкая saturation).
+      2. Кремовый — очень светлый + слабо насыщенный.
+      3. Бежевый — слабо-умеренно насыщенный + средний-светлый + тёплый.
+         Проверяется ДО коричневого, чтобы хаки и песочный не проваливались
+         в коричневый.
+      4. Коричневый — умеренно насыщенный + тёмный + тёплый.
+      5. Navy — тёмный + синий диапазон.
+      6. Красный / бордовый / розовый.
+      7. Оранжевый / терракотовый.
+      8. Жёлтый / горчичный — граница 55° (не 65°), иначе оливковый
+         уходит в горчичный.
+      9. Зелёный / оливковый / хаки / мятный.
+     10. Голубой / бирюзовый.
+     11. Синий.
+     12. Фиолетовый / сиреневый.
+     13. Розовый / лиловый.
     """
     h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
     h_deg = h * 360
     s_pct = s * 100
     v_pct = v * 100
 
-    # 1. Ахроматические — низкая насыщенность
+    # 1. Ахроматические
     if s_pct < 10:
         if v_pct < 15:
             return "чёрный"
@@ -292,28 +255,27 @@ def _rgb_to_color_name(r: int, g: int, b: int) -> str:
             return "светло-серый"
         return "белый"
 
-    # 2. Коричневый — тёмный + тёплый hue (в HSV тёмно-оранжевый
-    # воспринимается как коричневый, поэтому проверяем раньше оранжевого)
-    if 10 <= h_deg < 55 and v_pct < 55:
-        if v_pct < 30:
-            return "тёмно-коричневый"
-        return "коричневый"
-
-    # 3. Бежевый — светло + слабо насыщенно + тёплый
-    if 20 <= h_deg < 55 and s_pct < 40 and v_pct > 65:
-        return "бежевый"
-
-    # 4. Кремовый — очень светло + слабо насыщенно
+    # 2. Кремовый — очень светлый + слабо насыщенный
     if v_pct > 88 and s_pct < 35:
         return "кремовый"
 
-    # 5. Тёмно-синий / navy — тёмный + холодный синий диапазон
+    # 3. Бежевый — слабо-умеренно насыщенный + средний-светлый + тёплый.
+    #    s < 45 и v > 45 покрывают хаки, песочный, светлый серо-бежевый.
+    if 15 <= h_deg < 60 and s_pct < 45 and v_pct > 45:
+        return "бежевый"
+
+    # 4. Коричневый — умеренно насыщенный + тёмный + тёплый.
+    #    v < 45 — ниже бежевого, чтобы области не пересекались.
+    if 10 <= h_deg < 55 and v_pct < 45:
+        if v_pct < 25:
+            return "тёмно-коричневый"
+        return "коричневый"
+
+    # 5. Тёмно-синий / navy
     if 200 <= h_deg < 260 and v_pct < 45:
         return "тёмно-синий"
 
-    # 6. Основные цвета по hue
-
-    # Красный / бордовый / розовый
+    # 6. Красный / бордовый / розовый
     if h_deg < 15 or h_deg >= 345:
         if v_pct < 50:
             return "бордовый"
@@ -321,19 +283,19 @@ def _rgb_to_color_name(r: int, g: int, b: int) -> str:
             return "розовый"
         return "красный"
 
-    # Оранжевый / терракотовый
+    # 7. Оранжевый / терракотовый
     if h_deg < 40:
         if s_pct < 50 and v_pct < 65:
             return "терракотовый"
         return "оранжевый"
 
-    # Жёлтый / горчичный
-    if h_deg < 65:
+    # 8. Жёлтый / горчичный — граница 55°
+    if h_deg < 55:
         if v_pct < 60:
             return "горчичный"
         return "жёлтый"
 
-    # Зелёный / оливковый / хаки / мятный
+    # 9. Зелёный / оливковый / хаки / мятный
     if h_deg < 165:
         if v_pct < 50:
             return "оливковый"
@@ -343,23 +305,23 @@ def _rgb_to_color_name(r: int, g: int, b: int) -> str:
             return "мятный"
         return "зелёный"
 
-    # Голубой / бирюзовый
+    # 10. Голубой / бирюзовый
     if h_deg < 200:
         if s_pct > 50 and v_pct < 70:
             return "бирюзовый"
         return "голубой"
 
-    # Синий
+    # 11. Синий
     if h_deg < 255:
         return "синий"
 
-    # Фиолетовый / сиреневый
+    # 12. Фиолетовый / сиреневый
     if h_deg < 290:
         if s_pct < 40 and v_pct > 70:
             return "сиреневый"
         return "фиолетовый"
 
-    # Розовый / лиловый
+    # 13. Розовый / лиловый
     if h_deg < 345:
         if s_pct < 40 and v_pct > 70:
             return "лиловый"
@@ -371,12 +333,16 @@ def _rgb_to_color_name(r: int, g: int, b: int) -> str:
 def detect_color(image_bytes: bytes) -> tuple[str, list[str]]:
     """Определить доминирующий цвет и топ-3.
 
-    Улучшения по сравнению с базовой версией:
-      1. Кадрируем 20% по краям (сильнее отсекаем фон).
-      2. Корректируем баланс белого (gray-world).
-      3. Квантуем в 8 доминирующих цветов вместо 5.
-      4. Взвешенное голосование: цветные пиксели весят больше серых —
-         это спасает, когда фон доминирует по площади, но вещь цветная.
+    Шаги:
+      1. Кадрирование 20% и уменьшение до 200×200.
+      2. Проверка на «преимущественно чёрный»: если > 35% пикселей
+         тёмные и нейтральные (v < 0.22 и s < 0.25) — сразу «чёрный».
+         Это важно, потому что блеск на чёрной ткани даёт паразитный
+         оттенок, и голосование уводит цвет в фиолетовый или синий.
+      3. Фильтр по saturation: оставляем цветные пиксели (для тёмных
+         порог 30%, для остальных 12%). Отсеивает фон.
+      4. Взвешенное голосование — цветные пиксели весят больше.
+      5. Отладочный лог top-3 с их средними HSV.
     """
     img = Image.open(BytesIO(image_bytes)).convert("RGB")
     img.thumbnail((200, 200))
@@ -387,37 +353,76 @@ def detect_color(image_bytes: bytes) -> tuple[str, list[str]]:
     margin_y = int(h * 0.20)
     img = img.crop((margin_x, margin_y, w - margin_x, h - margin_y))
 
-    # 2. Баланс белого
-    img = _auto_white_balance(img)
-
-    # 3. Квантование в 8 цветов
-    quantized = img.quantize(colors=8, method=Image.Quantize.MEDIANCUT)
-    palette = quantized.getpalette() or []
-    counts = quantized.getcolors(maxcolors=256) or []
-
-    if not counts:
+    pixels = list(img.getdata())
+    if not pixels:
         return "неизвестный", []
+
+    # 2. Проверка на «преимущественно чёрный»
+    dark_neutral = 0
+    for p in pixels:
+        r, g, b = p
+        _, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+        if v < 0.22 and s < 0.25:
+            dark_neutral += 1
+
+    dark_ratio = dark_neutral / len(pixels)
+    if dark_ratio > 0.35:
+        logger.info(
+            "detect_color: dark_ratio=%.2f → чёрный (dark item detected)",
+            dark_ratio,
+        )
+        return "чёрный", ["чёрный", "тёмно-серый", "тёмно-синий"]
+
+    # 3. Фильтр по saturation
+    colored_pixels = []
+    for p in pixels:
+        r, g, b = p
+        _, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+        if v < 0.25:
+            is_colored = s >= 0.30
+        else:
+            is_colored = s >= 0.12
+        if is_colored:
+            colored_pixels.append(p)
+
+    colored_ratio = len(colored_pixels) / len(pixels)
+    source_pixels = colored_pixels if colored_ratio >= 0.15 else pixels
 
     # 4. Взвешенное голосование
     name_weights: dict[str, float] = {}
-    for count, idx in counts:
-        r = palette[idx * 3]
-        g = palette[idx * 3 + 1]
-        b = palette[idx * 3 + 2]
+    name_hsv: dict[str, list[tuple[float, float, float]]] = {}
 
-        # Бонус за насыщенность: цветные пиксели весят до 5× больше серых.
-        # Пиксель с s=0 весит 1×, с s=1 — 5×.
-        _, s, _ = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
-        weight = count * (1 + 4 * s)
-
+    for p in source_pixels:
+        r, g, b = p
+        hh, ss, vv = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
         name = _rgb_to_color_name(r, g, b)
+        weight = 1 + 4 * ss
         name_weights[name] = name_weights.get(name, 0.0) + weight
+        name_hsv.setdefault(name, []).append((hh * 360, ss * 100, vv * 100))
+
+    if not name_weights:
+        return "неизвестный", []
 
     sorted_names = sorted(name_weights.items(), key=lambda x: -x[1])
-
-    primary = sorted_names[0][0] if sorted_names else "неизвестный"
+    primary = sorted_names[0][0]
     top3 = [name for name, _ in sorted_names[:3]]
 
+    # 5. Отладочный лог top-3
+    debug_parts = []
+    for name, weight in sorted_names[:3]:
+        samples = name_hsv.get(name, [])
+        if samples:
+            avg_h = sum(x[0] for x in samples) / len(samples)
+            avg_s = sum(x[1] for x in samples) / len(samples)
+            avg_v = sum(x[2] for x in samples) / len(samples)
+            debug_parts.append(
+                f"{name}(w={weight:.0f}, H={avg_h:.0f}° S={avg_s:.0f}% V={avg_v:.0f}%)"
+            )
+
+    logger.info(
+        "detect_color: colored_ratio=%.2f dark_ratio=%.2f primary=%s | top3: %s",
+        colored_ratio, dark_ratio, primary, " | ".join(debug_parts),
+    )
     return primary, top3
 
 
@@ -429,7 +434,6 @@ _tokenizer = None
 
 
 def _get_model():
-    """Ленивая загрузка модели при первом вызове."""
     global _model, _preprocess, _tokenizer
     if _model is None:
         logger.info("Загружаем модель %s...", MODEL_NAME)
@@ -443,18 +447,11 @@ def _get_model():
 
 
 def _build_option(en_label: str, confidence: float) -> dict | None:
-    """Собрать описание одного варианта для отображения пользователю.
-
-    Возвращает None, если метки нет в LABEL_MAP (например, это негативная
-    метка или незнакомое слово).
-    """
     ru_type, category = LABEL_MAP.get(en_label, (None, None))
     if ru_type is None:
         return None
-
     defaults = TYPE_DEFAULTS.get(ru_type, (3, False, "casual", "универсальная"))
     warmth, waterproof, formal, season = defaults
-
     return {
         "type": ru_type,
         "category": category,
@@ -467,58 +464,28 @@ def _build_option(en_label: str, confidence: float) -> dict | None:
 
 
 async def classify_clothing(image_bytes: bytes) -> dict:
-    """Распознать вещь и вернуть топ-1 и топ-3 варианта.
-
-    Возвращает:
-    {
-        "ok": bool,
-        "category": ...,       # топ-1 (для совместимости)
-        "type": ...,           # топ-1
-        "confidence": ...,     # топ-1
-        "color": ...,          # определено отдельно
-        "color_candidates": [...],
-        "warmth_level": ...,   # дефолты для топ-1
-        "waterproof": ...,
-        "formal_level": ...,
-        "season": ...,
-        "options": [           # до 3 вариантов
-            {"type": ..., "category": ..., "confidence": ...,
-             "warmth_level": ..., "waterproof": ...,
-             "formal_level": ..., "season": ...},
-            ...,
-        ],
-    }
-    """
+    """Распознать вещь и вернуть топ-1 и топ-3 варианта."""
     color_primary, color_candidates = detect_color(image_bytes)
 
     try:
         model, preprocess, tokenizer = _get_model()
-
-        # Подготовка изображения
         image = Image.open(BytesIO(image_bytes)).convert("RGB")
         image_input = preprocess(image).unsqueeze(0)
-
-        # Токенизация меток
         text_inputs = tokenizer(ENGLISH_LABELS)
 
-        # Инференс
         with torch.no_grad():
             image_features = model.encode_image(image_input)
             text_features = model.encode_text(text_inputs)
-
             image_features /= image_features.norm(dim=-1, keepdim=True)
             text_features /= text_features.norm(dim=-1, keepdim=True)
-
             similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1)
 
-        # Получаем вероятности
         probs = similarity[0].tolist()
         results = [
             {"label": label, "score": prob}
             for label, prob in zip(ENGLISH_LABELS, probs)
         ]
         results.sort(key=lambda x: x["score"], reverse=True)
-
     except Exception:
         logger.exception("Ошибка классификации")
         return {
@@ -534,8 +501,6 @@ async def classify_clothing(image_bytes: bytes) -> dict:
             "color_candidates": color_candidates,
         }
 
-    # Собираем топ-3 валидных варианта (пропускаем негативные метки
-    # и метки без маппинга). Результаты уже отсортированы по убыванию.
     options: list[dict] = []
     seen_types: set[str] = set()
     top_confidence = 0.0
@@ -543,29 +508,21 @@ async def classify_clothing(image_bytes: bytes) -> dict:
     for r in results:
         en_label = r["label"]
         score = float(r["score"])
-
         if en_label in NEGATIVE_LABELS:
             continue
-
         opt = _build_option(en_label, score)
         if opt is None:
             continue
-
-        # Дедупликация: разные английские метки могут вести
-        # на один русский тип (например, "a t-shirt" и "a plain t-shirt").
         if opt["type"] in seen_types:
             continue
-
         seen_types.add(opt["type"])
         options.append(opt)
         if len(options) == 1:
             top_confidence = score
-
         if len(options) >= 3:
             break
 
     if not options:
-        logger.info("Нет валидных вариантов (всё негативные или низкая уверенность)")
         return {
             "ok": False,
             "color": color_primary,
@@ -573,10 +530,6 @@ async def classify_clothing(image_bytes: bytes) -> dict:
         }
 
     if top_confidence < CONFIDENCE_THRESHOLD:
-        logger.info(
-            "Топ-1 ниже порога: %.3f < %.3f",
-            top_confidence, CONFIDENCE_THRESHOLD,
-        )
         return {
             "ok": False,
             "color": color_primary,
@@ -584,9 +537,8 @@ async def classify_clothing(image_bytes: bytes) -> dict:
         }
 
     top = options[0]
-
     logger.info(
-        "Распознавание: top=%s (%.3f) category=%s color=%s, всего вариантов=%d",
+        "Распознавание: top=%s (%.3f) category=%s color=%s, вариантов=%d",
         top["type"], top["confidence"], top["category"], color_primary, len(options),
     )
 
