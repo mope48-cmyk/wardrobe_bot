@@ -26,21 +26,24 @@ logger = logging.getLogger(__name__)
 # Шага awaiting_confirm_category здесь нет: его клавиатура динамическая,
 # зависит от вариантов распознавания.
 STEP_KEYBOARDS: dict[str, list[list[str]]] = {
-    "awaiting_category": [["верх", "низ"], ["обувь", "аксессуар"]],
-    "awaiting_warmth": [["1", "2", "3"], ["4", "5"]],
-    "awaiting_waterproof": [["да", "нет"]],
-    "awaiting_formal": [["casual", "business", "sport"]],
-    "awaiting_season": [["лето", "демисезон"], ["зима", "универсальная"]],
+    "awaiting_photo": [["❌ Отмена"]],
+    "awaiting_category": [["верх", "низ"], ["обувь", "аксессуар"], ["❌ Отмена"]],
+    "awaiting_type": [["❌ Отмена"]],
+    "awaiting_color": [["❌ Отмена"]],
+    "awaiting_warmth": [["1", "2", "3"], ["4", "5"], ["❌ Отмена"]],
+    "awaiting_waterproof": [["да", "нет"], ["❌ Отмена"]],
+    "awaiting_formal": [["casual", "business", "sport"], ["❌ Отмена"]],
+    "awaiting_season": [["лето", "демисезон"], ["зима", "универсальная"], ["❌ Отмена"]],
+    "awaiting_location": [["❌ Отмена"]],
 }
 
-OCCASION_KEYBOARD = [["работа", "прогулка"], ["спорт", "встреча"], ["другое"]]
+OCCASION_KEYBOARD = [["работа", "прогулка"], ["спорт", "встреча"], ["другое"], ["❌ Отмена"]]
 
 REMOVE_KB = "remove"
 
 # Главное меню. Используется после /start, /cancel, сохранения вещи и т.п.
 # Подписи на русском с эмодзи. Маршрутизация по ним — в builder.route_condition.
 MENU_KEYBOARD = [
-    ["➕ Добавить вещь"],
     ["👕 Мой гардероб", "🌤 Подобрать образ"],
     ["❓ Помощь", "❌ Отмена"],
 ]
@@ -78,6 +81,7 @@ def _confirm_keyboard(options: list[dict]) -> list[list[str]]:
     rows: list[list[str]] = []
     for i in range(0, len(buttons), 2):
         rows.append(buttons[i:i + 2])
+    rows.append(["❌ Отмена"])
     return rows
 
 
@@ -138,8 +142,8 @@ async def _persist_item(state: BotState, draft: dict) -> dict:
 WELCOME_TEXT = (
     "Привет! Я помогу каталогизировать твой гардероб "
     "и подбирать одежду по погоде.\n\n"
+    "📸 Просто пришли фото вещи — я распознаю её и добавлю в гардероб.\n\n"
     "Доступные команды:\n"
-    "/add — добавить вещь\n"
     "/list — показать гардероб\n"
     "/outfit — подобрать комплект по погоде\n"
     "/help — справка\n"
@@ -148,7 +152,7 @@ WELCOME_TEXT = (
 
 HELP_TEXT = (
     "Что я умею:\n\n"
-    "• /add — добавить вещь. Пришлите фото, я попробую распознать категорию и тип.\n\n"
+    "• 📸 Пришлите фото вещи — я распознаю её и предложу добавить в гардероб.\n\n"
     "• /list — показать все вещи в вашем гардеробе.\n\n"
     "• /outfit — подобрать комплект по погоде.\n\n"
     "• /cancel — отменить текущий диалог."
@@ -1020,7 +1024,7 @@ async def add_start_node(state: BotState) -> dict:
         "messages": [
             AIMessage(
                 content="Пришлите, пожалуйста, фотографию вещи.",
-                additional_kwargs=_kb(REMOVE_KB),
+                additional_kwargs=_kb_for_step("awaiting_photo"),
             )
         ],
         "intent": "add", "step": "awaiting_photo", "draft_item": {},
@@ -1030,7 +1034,10 @@ async def add_start_node(state: BotState) -> dict:
 async def add_expect_photo_node(state: BotState) -> dict:
     return {
         "messages": [
-            AIMessage(content="Жду фотографию вещи. Или /cancel для отмены.")
+            AIMessage(
+                content="Жду фотографию вещи. Или нажмите Отмена.",
+                additional_kwargs=_kb_for_step("awaiting_photo"),
+            )
         ],
     }
 
@@ -1211,7 +1218,7 @@ async def outfit_start_node(state: BotState) -> dict:
                     "Отправьте <b>геолокацию</b> (скрепка → Геопозиция) "
                     "или напишите название города."
                 ),
-                additional_kwargs=_kb(REMOVE_KB),
+                additional_kwargs=_kb_for_step("awaiting_location"),
             )
         ],
         "intent": "outfit",
@@ -1239,7 +1246,8 @@ async def outfit_location_node(state: BotState) -> dict:
                         content=(
                             "Не смог найти этот город. Попробуйте ещё раз "
                             "или отправьте геолокацию."
-                        )
+                        ),
+                        additional_kwargs=_kb_for_step("awaiting_location"),
                     )
                 ],
             }
@@ -1248,7 +1256,8 @@ async def outfit_location_node(state: BotState) -> dict:
         return {
             "messages": [
                 AIMessage(
-                    content="Жду геолокацию или название города. Или /cancel."
+                    content="Жду геолокацию или название города. Или нажмите Отмена.",
+                    additional_kwargs=_kb_for_step("awaiting_location"),
                 )
             ],
         }

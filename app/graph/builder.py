@@ -44,6 +44,7 @@ def _match_menu_button(text: str) -> str | None:
 def route_condition(state: BotState) -> str:
     """Определить, в какой узел идти, на основе ввода и текущего шага."""
     text = (state.get("input_text") or "").strip()
+    step = state.get("step")
 
     # 0. Callback'и из inline-кнопок (list:prev, list:next и т.д.)
     if text == "list:prev":
@@ -88,9 +89,11 @@ def route_condition(state: BotState) -> str:
     if menu_intent:
         return menu_intent
 
-    # 3. Не команда — смотрим на текущий шаг
-    step = state.get("step")
+    # 3. Фото вне активного диалога — сразу начинаем добавление вещи
+    if state.get("input_photo_file_id") and not step:
+        return "add_photo"
 
+    # 4. Не команда — смотрим на текущий шаг
     if step == "awaiting_photo":
         if state.get("input_photo_file_id"):
             return "add_photo"

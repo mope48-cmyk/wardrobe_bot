@@ -11,7 +11,7 @@ from PIL import Image
 logger = logging.getLogger(__name__)
 
 MODEL_NAME = "MobileCLIP2-S0"
-PRETRAINED = "dfndr2b"  # Идентификатор предобученных весов
+PRETRAINED = "dfndr2b"
 
 # Расширенный список английских меток.
 ENGLISH_LABELS = [
@@ -232,51 +232,137 @@ TYPE_DEFAULTS = {
 
 # ---------- Определение цвета ----------
 
-def _rgb_to_color_name(r: int, g: int, b: int) -> str:
-    """Определить имя цвета по RGB через HSV.
+def _auto_white_balance(img: Image.Image) -> Image.Image:
+    """Gray-world: выравниваем средние значения каналов.
 
-    HSV отделяет оттенок (Hue) от яркости (Value) и насыщенности (Saturation),
-    поэтому тени и освещение влияют слабее, чем в чистом RGB.
+    Снимает цветовой сдвиг от освещения — лампа накаливания (тёплый свет)
+    и уличный день (холодный) приводят к искажению, из-за которого
+    алгоритм видит серый там, где на самом деле цвет.
+    """
+    pixels = list(img.getdata())
+    if not pixels:
+        return img
+
+    n = len(pixels)
+    r_avg = sum(p[0] for p in pixels) / n
+    g_avg = sum(p[1] for p in pixels) / n
+    b_avg = sum(p[2] for p in pixels) / n
+    gray = (r_avg + g_avg + b_avg) / 3
+
+    r_scale = gray / max(r_avg, 1)
+    g_scale = gray / max(g_avg, 1)
+    b_scale = gray / max(b_avg, 1)
+
+    out = Image.new("RGB", img.size)
+    out.putdata([
+        (
+            min(255, int(p[0] * r_scale)),
+            min(255, int(p[1] * g_scale)),
+            min(255, int(p[2] * b_scale)),
+        )
+        for p in pixels
+    ])
+    return out
+
+
+def _rgb_to_color_name(r: int, g: int, b: int) -> str:
+    """Развёрнутая классификация цвета по HSV.
+
+    Принципы:
+      - порог «серых» снижен с 15% до 10% (многие цвета умеренно насыщены);
+      - добавлены промежуточные оттенки (тёмно-серый, светло-серый, navy,
+        оливковый, горчичный, хаки, терракотовый, кремовый и т.д.);
+      - коричневый и бежевый выделяются из оранжевого/жёлтого
+        по яркости и насыщенности.
     """
     h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
-    h_deg = h * 360      # 0–360: тон
-    s_pct = s * 100      # 0–100: насыщенность
-    v_pct = v * 100      # 0–100: яркость
+    h_deg = h * 360
+    s_pct = s * 100
+    v_pct = v * 100
 
-    # Ахроматические цвета (низкая насыщенность)
-    if s_pct < 15:
-        if v_pct < 20:
+    # 1. Ахроматические — низкая насыщенность
+    if s_pct < 10:
+        if v_pct < 15:
             return "чёрный"
-        if v_pct > 85:
-            return "белый"
-        return "серый"
+        if v_pct < 40:
+            return "тёмно-серый"
+        if v_pct < 70:
+            return "серый"
+        if v_pct < 90:
+            return "светло-серый"
+        return "белый"
 
-    # Коричневый — тёмный и умеренно насыщенный, в оранжево-жёлтом диапазоне
-    if 15 <= h_deg < 50 and v_pct < 55 and s_pct > 20:
+    # 2. Коричневый — тёмный + тёплый hue (в HSV тёмно-оранжевый
+    # воспринимается как коричневый, поэтому проверяем раньше оранжевого)
+    if 10 <= h_deg < 55 and v_pct < 55:
+        if v_pct < 30:
+            return "тёмно-коричневый"
         return "коричневый"
 
-    # Бежевый — светлый, слабонасыщенный, тёплый
-    if 20 <= h_deg < 55 and s_pct < 40 and v_pct > 60:
+    # 3. Бежевый — светло + слабо насыщенно + тёплый
+    if 20 <= h_deg < 55 and s_pct < 40 and v_pct > 65:
         return "бежевый"
 
-    # Цветные по тону
+    # 4. Кремовый — очень светло + слабо насыщенно
+    if v_pct > 88 and s_pct < 35:
+        return "кремовый"
+
+    # 5. Тёмно-синий / navy — тёмный + холодный синий диапазон
+    if 200 <= h_deg < 260 and v_pct < 45:
+        return "тёмно-синий"
+
+    # 6. Основные цвета по hue
+
+    # Красный / бордовый / розовый
     if h_deg < 15 or h_deg >= 345:
         if v_pct < 50:
             return "бордовый"
+        if v_pct > 75 and s_pct < 50:
+            return "розовый"
         return "красный"
+
+    # Оранжевый / терракотовый
     if h_deg < 40:
+        if s_pct < 50 and v_pct < 65:
+            return "терракотовый"
         return "оранжевый"
-    if h_deg < 70:
+
+    # Жёлтый / горчичный
+    if h_deg < 65:
+        if v_pct < 60:
+            return "горчичный"
         return "жёлтый"
+
+    # Зелёный / оливковый / хаки / мятный
     if h_deg < 165:
+        if v_pct < 50:
+            return "оливковый"
+        if s_pct < 35:
+            return "хаки"
+        if v_pct > 80 and s_pct < 50:
+            return "мятный"
         return "зелёный"
+
+    # Голубой / бирюзовый
     if h_deg < 200:
+        if s_pct > 50 and v_pct < 70:
+            return "бирюзовый"
         return "голубой"
+
+    # Синий
     if h_deg < 255:
         return "синий"
+
+    # Фиолетовый / сиреневый
     if h_deg < 290:
+        if s_pct < 40 and v_pct > 70:
+            return "сиреневый"
         return "фиолетовый"
+
+    # Розовый / лиловый
     if h_deg < 345:
+        if s_pct < 40 and v_pct > 70:
+            return "лиловый"
         return "розовый"
 
     return "неизвестный"
@@ -285,44 +371,54 @@ def _rgb_to_color_name(r: int, g: int, b: int) -> str:
 def detect_color(image_bytes: bytes) -> tuple[str, list[str]]:
     """Определить доминирующий цвет и топ-3.
 
-    Алгоритм:
-    1. Уменьшаем изображение до 200×200 (для скорости).
-    2. Отрезаем 15% по краям — вещь почти всегда в центре, фон по краям.
-    3. Квантуем в 5 доминирующих цветов (встроенный PIL quantize).
-    4. Каждый кластер переводим в имя цвета через HSV.
-    5. Возвращаем самый частый как основной + топ-3 уникальных имён.
+    Улучшения по сравнению с базовой версией:
+      1. Кадрируем 20% по краям (сильнее отсекаем фон).
+      2. Корректируем баланс белого (gray-world).
+      3. Квантуем в 8 доминирующих цветов вместо 5.
+      4. Взвешенное голосование: цветные пиксели весят больше серых —
+         это спасает, когда фон доминирует по площади, но вещь цветная.
     """
     img = Image.open(BytesIO(image_bytes)).convert("RGB")
     img.thumbnail((200, 200))
 
+    # 1. Кадрирование 20%
     w, h = img.size
-    margin_x = int(w * 0.15)
-    margin_y = int(h * 0.15)
+    margin_x = int(w * 0.20)
+    margin_y = int(h * 0.20)
     img = img.crop((margin_x, margin_y, w - margin_x, h - margin_y))
 
-    # Квантование: 5 доминирующих цветов на изображении.
-    # MEDIANCUT — быстрый и хорошо работает на фотографиях.
-    quantized = img.quantize(colors=5, method=Image.Quantize.MEDIANCUT)
+    # 2. Баланс белого
+    img = _auto_white_balance(img)
+
+    # 3. Квантование в 8 цветов
+    quantized = img.quantize(colors=8, method=Image.Quantize.MEDIANCUT)
     palette = quantized.getpalette() or []
     counts = quantized.getcolors(maxcolors=256) or []
 
     if not counts:
         return "неизвестный", []
 
-    # counts = [(count, palette_index), ...]. Сортируем по частоте.
-    counts.sort(key=lambda x: x[0], reverse=True)
-
-    color_names: list[str] = []
-    for _, idx in counts:
+    # 4. Взвешенное голосование
+    name_weights: dict[str, float] = {}
+    for count, idx in counts:
         r = palette[idx * 3]
         g = palette[idx * 3 + 1]
         b = palette[idx * 3 + 2]
-        name = _rgb_to_color_name(r, g, b)
-        if name not in color_names:
-            color_names.append(name)
 
-    primary = color_names[0] if color_names else "неизвестный"
-    return primary, color_names[:3]
+        # Бонус за насыщенность: цветные пиксели весят до 5× больше серых.
+        # Пиксель с s=0 весит 1×, с s=1 — 5×.
+        _, s, _ = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+        weight = count * (1 + 4 * s)
+
+        name = _rgb_to_color_name(r, g, b)
+        name_weights[name] = name_weights.get(name, 0.0) + weight
+
+    sorted_names = sorted(name_weights.items(), key=lambda x: -x[1])
+
+    primary = sorted_names[0][0] if sorted_names else "неизвестный"
+    top3 = [name for name, _ in sorted_names[:3]]
+
+    return primary, top3
 
 
 # ---------- Распознавание одежды ----------
@@ -389,7 +485,7 @@ async def classify_clothing(image_bytes: bytes) -> dict:
             {"type": ..., "category": ..., "confidence": ...,
              "warmth_level": ..., "waterproof": ...,
              "formal_level": ..., "season": ...},
-            ...
+            ...,
         ],
     }
     """
