@@ -1,4 +1,4 @@
-"""Распознавание одежды и определение цвета."""
+"""Распознавание одежды, материала и определение цвета."""
 
 import colorsys
 import logging
@@ -14,53 +14,70 @@ MODEL_NAME = "MobileCLIP2-S0"
 PRETRAINED = "dfndr2b"
 
 
-# ---------- Английские метки ----------
+# ---------- Английские метки типов ----------
 
 ENGLISH_LABELS = [
     # Верхняя одежда
-    "a jacket", "a casual jacket", "a winter jacket",
-    "a coat", "a long coat", "an overcoat",
+    "a jacket", "a winter jacket",
+    "a coat", "a long coat",
     "a raincoat", "a waterproof jacket",
     "a windbreaker",
-    "a puffer jacket", "a down jacket",
+    "a puffer jacket",
     "a leather jacket",
     "a denim jacket",
     "a suit jacket", "a blazer",
-    # Свитеры и лёгкий верх
+    "a bomber jacket", "a parka", "a trench coat",
+    "a poncho", "a cape",
+    # Свитеры и средний слой
     "a sweater", "a knitted sweater", "a wool sweater",
-    "a hoodie", "a hooded sweatshirt",
+    "a hoodie",
     "a sweatshirt",
     "a cardigan",
     "a vest", "a sleeveless vest",
-    # Рубашки и лёгкие
-    "a shirt", "a button-up shirt", "a dress shirt",
-    "a t-shirt", "a plain t-shirt",
+    "a turtleneck",
+    "a long-sleeve shirt",
+    "a fleece jacket",
+    # Лёгкий верх
+    "a shirt", "a dress shirt",
+    "a t-shirt",
     "a polo shirt",
     "a blouse",
     "a top", "a tank top",
+    "a crop top",
+    "a bodysuit",
     "a dress", "a summer dress", "a long dress",
+    # Цельное
+    "a jumpsuit", "overalls",
+    "a robe", "a kimono",
     # Низ
     "trousers", "dress pants", "casual trousers",
-    "jeans", "blue jeans",
+    "jeans",
     "shorts",
-    "a skirt",
+    "a skirt", "a maxi skirt", "a mini skirt", "a pencil skirt",
     "leggings",
-    "sweatpants",
+    "sweatpants", "joggers",
+    "cargo pants", "chinos",
+    "capri pants", "culottes",
+    "bike shorts", "palazzo pants",
     # Обувь
-    "sneakers", "running shoes",
+    "sneakers", "running shoes", "high-top sneakers",
     "boots", "winter boots", "ankle boots",
+    "tall boots", "over-the-knee boots",
+    "uggs",
     "shoes", "dress shoes", "loafers",
+    "moccasins", "espadrilles", "slip-on shoes", "ballet flats",
     "sandals",
-    "heels", "high heels",
+    "heels",
     # Аксессуары
-    "a hat", "a winter hat", "a beanie",
-    "a cap", "a baseball cap",
-    "a scarf",
-    "gloves",
+    "a hat", "a winter hat", "a beanie", "a beret",
+    "a cap", "a baseball cap", "a peaked cap",
+    "a scarf", "a snood", "a stole",
+    "gloves", "mittens",
     "a belt",
-    "a bag", "a handbag",
-    "a backpack",
-    # НЕГАТИВНЫЕ (не одежда)
+    "a bag", "a backpack", "a briefcase", "a wallet",
+    "a tie", "a bow tie",
+    "socks", "tights", "stockings",
+    # НЕГАТИВНЫЕ
     "a landscape", "a nature scene",
     "a room interior", "furniture",
     "food", "a meal",
@@ -71,73 +88,115 @@ ENGLISH_LABELS = [
 ]
 
 LABEL_MAP = {
+    # Верхняя одежда
     "a jacket": ("куртка", "верх"),
-    "a casual jacket": ("куртка", "верх"),
     "a winter jacket": ("зимняя куртка", "верх"),
     "a coat": ("пальто", "верх"),
     "a long coat": ("длинное пальто", "верх"),
-    "an overcoat": ("пальто", "верх"),
     "a raincoat": ("дождевик", "верх"),
     "a waterproof jacket": ("непромокаемая куртка", "верх"),
     "a windbreaker": ("ветровка", "верх"),
     "a puffer jacket": ("пуховик", "верх"),
-    "a down jacket": ("пуховик", "верх"),
     "a leather jacket": ("кожаная куртка", "верх"),
     "a denim jacket": ("джинсовая куртка", "верх"),
     "a suit jacket": ("пиджак", "верх"),
     "a blazer": ("блейзер", "верх"),
+    "a bomber jacket": ("бомбер", "верх"),
+    "a parka": ("парка", "верх"),
+    "a trench coat": ("тренч", "верх"),
+    "a poncho": ("пончо", "верх"),
+    "a cape": ("накидка", "верх"),
+    # Свитеры и средний слой
     "a sweater": ("свитер", "верх"),
     "a knitted sweater": ("вязаный свитер", "верх"),
     "a wool sweater": ("шерстяной свитер", "верх"),
     "a hoodie": ("толстовка", "верх"),
-    "a hooded sweatshirt": ("толстовка", "верх"),
     "a sweatshirt": ("свитшот", "верх"),
     "a cardigan": ("кардиган", "верх"),
     "a vest": ("жилет", "верх"),
     "a sleeveless vest": ("безрукавка", "верх"),
+    "a turtleneck": ("водолазка", "верх"),
+    "a long-sleeve shirt": ("лонгслив", "верх"),
+    "a fleece jacket": ("флисовая куртка", "верх"),
+    # Лёгкий верх
     "a shirt": ("рубашка", "верх"),
-    "a button-up shirt": ("рубашка", "верх"),
     "a dress shirt": ("классическая рубашка", "верх"),
     "a t-shirt": ("футболка", "верх"),
-    "a plain t-shirt": ("футболка", "верх"),
     "a polo shirt": ("поло", "верх"),
     "a blouse": ("блузка", "верх"),
     "a top": ("топ", "верх"),
     "a tank top": ("майка", "верх"),
+    "a crop top": ("кроп-топ", "верх"),
+    "a bodysuit": ("боди", "верх"),
     "a dress": ("платье", "верх"),
     "a summer dress": ("летнее платье", "верх"),
     "a long dress": ("длинное платье", "верх"),
+    # Цельное
+    "a jumpsuit": ("комбинезон", "верх"),
+    "overalls": ("комбинезон", "верх"),
+    "a robe": ("халат", "верх"),
+    "a kimono": ("кимоно", "верх"),
+    # Низ
     "trousers": ("брюки", "низ"),
     "dress pants": ("классические брюки", "низ"),
     "casual trousers": ("повседневные брюки", "низ"),
     "jeans": ("джинсы", "низ"),
-    "blue jeans": ("джинсы", "низ"),
     "shorts": ("шорты", "низ"),
     "a skirt": ("юбка", "низ"),
+    "a maxi skirt": ("длинная юбка", "низ"),
+    "a mini skirt": ("мини-юбка", "низ"),
+    "a pencil skirt": ("юбка-карандаш", "низ"),
     "leggings": ("леггинсы", "низ"),
     "sweatpants": ("спортивные штаны", "низ"),
+    "joggers": ("джоггеры", "низ"),
+    "cargo pants": ("карго", "низ"),
+    "chinos": ("чиносы", "низ"),
+    "capri pants": ("капри", "низ"),
+    "culottes": ("кюлоты", "низ"),
+    "bike shorts": ("велосипедки", "низ"),
+    "palazzo pants": ("палаццо", "низ"),
+    # Обувь
     "sneakers": ("кроссовки", "обувь"),
     "running shoes": ("беговые кроссовки", "обувь"),
+    "high-top sneakers": ("высокие кроссовки", "обувь"),
     "boots": ("ботинки", "обувь"),
     "winter boots": ("зимние ботинки", "обувь"),
-    "ankle boots": ("полуботинки", "обувь"),
+    "ankle boots": ("ботильоны", "обувь"),
+    "tall boots": ("сапоги", "обувь"),
+    "over-the-knee boots": ("ботфорты", "обувь"),
+    "uggs": ("угги", "обувь"),
     "shoes": ("туфли", "обувь"),
     "dress shoes": ("классические туфли", "обувь"),
     "loafers": ("лоферы", "обувь"),
+    "moccasins": ("мокасины", "обувь"),
+    "espadrilles": ("эспадрильи", "обувь"),
+    "slip-on shoes": ("слипоны", "обувь"),
+    "ballet flats": ("балетки", "обувь"),
     "sandals": ("сандалии", "обувь"),
     "heels": ("каблуки", "обувь"),
-    "high heels": ("высокие каблуки", "обувь"),
+    # Аксессуары
     "a hat": ("шляпа", "аксессуар"),
     "a winter hat": ("зимняя шапка", "аксессуар"),
     "a beanie": ("шапка-бини", "аксессуар"),
+    "a beret": ("берет", "аксессуар"),
     "a cap": ("кепка", "аксессуар"),
     "a baseball cap": ("бейсболка", "аксессуар"),
+    "a peaked cap": ("фуражка", "аксессуар"),
     "a scarf": ("шарф", "аксессуар"),
+    "a snood": ("снуд", "аксессуар"),
+    "a stole": ("палантин", "аксессуар"),
     "gloves": ("перчатки", "аксессуар"),
+    "mittens": ("варежки", "аксессуар"),
     "a belt": ("ремень", "аксессуар"),
     "a bag": ("сумка", "аксессуар"),
-    "a handbag": ("сумка", "аксессуар"),
     "a backpack": ("рюкзак", "аксессуар"),
+    "a briefcase": ("портфель", "аксессуар"),
+    "a wallet": ("кошелёк", "аксессуар"),
+    "a tie": ("галстук", "аксессуар"),
+    "a bow tie": ("бабочка", "аксессуар"),
+    "socks": ("носки", "аксессуар"),
+    "tights": ("колготки", "аксессуар"),
+    "stockings": ("чулки", "аксессуар"),
 }
 
 NEGATIVE_LABELS = {
@@ -152,92 +211,154 @@ NEGATIVE_LABELS = {
 
 CONFIDENCE_THRESHOLD = 0.10
 
+
+# ---------- Материалы ----------
+
+MATERIAL_LABELS = [
+    "cotton", "wool", "leather", "denim", "silk", "polyester",
+    "linen", "knit", "corduroy", "suede", "cashmere", "viscose",
+    "nylon", "fleece", "velvet",
+]
+
+MATERIAL_MAP = {
+    "cotton": "хлопок",
+    "wool": "шерсть",
+    "leather": "кожа",
+    "denim": "деним",
+    "silk": "шёлк",
+    "polyester": "полиэстер",
+    "linen": "лён",
+    "knit": "трикотаж",
+    "corduroy": "вельвет",
+    "suede": "замша",
+    "cashmere": "кашемир",
+    "viscose": "вискоза",
+    "nylon": "нейлон",
+    "fleece": "флис",
+    "velvet": "бархат",
+}
+
+MATERIAL_THRESHOLD = 0.20
+
+
+# ---------- TYPE_DEFAULTS ----------
+
 TYPE_DEFAULTS = {
-    "куртка":              (4, False, "casual", "демисезон"),
-    "зимняя куртка":       (5, True,  "casual", "зима"),
-    "пальто":              (4, False, "business", "зима"),
-    "длинное пальто":      (4, False, "business", "зима"),
-    "дождевик":            (2, True,  "casual", "демисезон"),
-    "непромокаемая куртка": (4, True, "casual", "демисезон"),
-    "ветровка":            (2, True,  "casual", "демисезон"),
-    "пуховик":             (5, True,  "casual", "зима"),
-    "кожаная куртка":      (3, True,  "casual", "демисезон"),
-    "джинсовая куртка":    (3, False, "casual", "демисезон"),
-    "пиджак":              (3, False, "business", "универсальная"),
-    "блейзер":             (3, False, "business", "универсальная"),
-    "свитер":              (4, False, "casual", "зима"),
-    "вязаный свитер":      (4, False, "casual", "зима"),
-    "шерстяной свитер":    (5, False, "casual", "зима"),
-    "толстовка":           (3, False, "casual", "демисезон"),
-    "свитшот":             (3, False, "casual", "демисезон"),
-    "кардиган":            (3, False, "casual", "демисезон"),
-    "жилет":               (2, False, "casual", "демисезон"),
-    "безрукавка":          (2, False, "casual", "демисезон"),
-    "рубашка":             (2, False, "business", "универсальная"),
+    # Верхняя одежда
+    "куртка":               (4, False, "casual", "демисезон"),
+    "зимняя куртка":        (5, True,  "casual", "зима"),
+    "пальто":               (4, False, "business", "зима"),
+    "длинное пальто":       (4, False, "business", "зима"),
+    "дождевик":             (2, True,  "casual", "демисезон"),
+    "непромокаемая куртка": (4, True,  "casual", "демисезон"),
+    "ветровка":             (2, True,  "casual", "демисезон"),
+    "пуховик":              (5, True,  "casual", "зима"),
+    "кожаная куртка":       (3, True,  "casual", "демисезон"),
+    "джинсовая куртка":     (3, False, "casual", "демисезон"),
+    "пиджак":               (3, False, "business", "универсальная"),
+    "блейзер":              (3, False, "business", "универсальная"),
+    "бомбер":               (3, False, "casual", "демисезон"),
+    "парка":                (5, True,  "casual", "зима"),
+    "тренч":                (4, True,  "business", "демисезон"),
+    "пончо":                (3, False, "casual", "демисезон"),
+    "накидка":              (2, False, "casual", "демисезон"),
+    # Свитеры и средний слой
+    "свитер":               (4, False, "casual", "зима"),
+    "вязаный свитер":       (4, False, "casual", "зима"),
+    "шерстяной свитер":     (5, False, "casual", "зима"),
+    "толстовка":            (3, False, "casual", "демисезон"),
+    "свитшот":              (3, False, "casual", "демисезон"),
+    "кардиган":             (3, False, "casual", "демисезон"),
+    "жилет":                (2, False, "casual", "демисезон"),
+    "безрукавка":           (2, False, "casual", "демисезон"),
+    "водолазка":            (3, False, "casual", "демисезон"),
+    "лонгслив":             (2, False, "casual", "демисезон"),
+    "флисовая куртка":      (3, False, "sport", "демисезон"),
+    # Лёгкий верх
+    "рубашка":              (2, False, "business", "универсальная"),
     "классическая рубашка": (2, False, "business", "универсальная"),
-    "футболка":            (1, False, "casual", "лето"),
-    "поло":                (2, False, "casual", "лето"),
-    "блузка":              (2, False, "business", "универсальная"),
-    "топ":                 (1, False, "casual", "лето"),
-    "майка":               (1, False, "casual", "лето"),
-    "платье":              (2, False, "business", "лето"),
-    "летнее платье":       (1, False, "casual", "лето"),
-    "длинное платье":      (2, False, "business", "универсальная"),
-    "брюки":               (3, False, "business", "универсальная"),
-    "классические брюки":  (3, False, "business", "универсальная"),
-    "повседневные брюки":  (3, False, "casual", "универсальная"),
-    "джинсы":              (3, False, "casual", "универсальная"),
-    "шорты":               (1, False, "casual", "лето"),
-    "юбка":                (2, False, "casual", "лето"),
-    "леггинсы":            (2, False, "sport", "демисезон"),
-    "спортивные штаны":    (2, False, "sport", "демисезон"),
-    "кроссовки":           (2, False, "sport", "демисезон"),
-    "беговые кроссовки":   (2, False, "sport", "лето"),
-    "ботинки":             (3, True,  "casual", "демисезон"),
-    "зимние ботинки":      (4, True,  "casual", "зима"),
-    "полуботинки":         (3, False, "casual", "демисезон"),
-    "туфли":               (2, False, "business", "универсальная"),
-    "классические туфли":  (2, False, "business", "универсальная"),
-    "лоферы":              (2, False, "business", "универсальная"),
-    "сандалии":            (1, False, "casual", "лето"),
-    "каблуки":             (2, False, "business", "универсальная"),
-    "высокие каблуки":     (2, False, "business", "универсальная"),
-    "шляпа":               (2, False, "casual", "лето"),
-    "зимняя шапка":        (4, False, "casual", "зима"),
-    "шапка-бини":          (4, False, "casual", "зима"),
-    "кепка":               (1, False, "casual", "лето"),
-    "бейсболка":           (1, False, "casual", "лето"),
-    "шарф":                (4, False, "casual", "зима"),
-    "перчатки":            (3, False, "casual", "зима"),
-    "ремень":              (1, False, "business", "универсальная"),
-    "сумка":               (1, False, "casual", "универсальная"),
-    "рюкзак":              (1, False, "casual", "универсальная"),
+    "футболка":             (1, False, "casual", "лето"),
+    "поло":                 (2, False, "casual", "лето"),
+    "блузка":               (2, False, "business", "универсальная"),
+    "топ":                  (1, False, "casual", "лето"),
+    "майка":                (1, False, "casual", "лето"),
+    "кроп-топ":             (1, False, "casual", "лето"),
+    "боди":                 (1, False, "casual", "лето"),
+    "платье":               (2, False, "business", "лето"),
+    "летнее платье":        (1, False, "casual", "лето"),
+    "длинное платье":       (2, False, "business", "универсальная"),
+    # Цельное
+    "комбинезон":           (2, False, "casual", "универсальная"),
+    "халат":                (2, False, "casual", "универсальная"),
+    "кимоно":               (2, False, "casual", "лето"),
+    # Низ
+    "брюки":                (3, False, "business", "универсальная"),
+    "классические брюки":   (3, False, "business", "универсальная"),
+    "повседневные брюки":   (3, False, "casual", "универсальная"),
+    "джинсы":               (3, False, "casual", "универсальная"),
+    "шорты":                (1, False, "casual", "лето"),
+    "юбка":                 (2, False, "casual", "лето"),
+    "длинная юбка":         (2, False, "casual", "универсальная"),
+    "мини-юбка":            (2, False, "casual", "лето"),
+    "юбка-карандаш":        (2, False, "business", "универсальная"),
+    "леггинсы":             (2, False, "sport", "демисезон"),
+    "спортивные штаны":     (2, False, "sport", "демисезон"),
+    "джоггеры":             (2, False, "sport", "демисезон"),
+    "карго":                (3, False, "casual", "демисезон"),
+    "чиносы":               (3, False, "casual", "универсальная"),
+    "капри":                (2, False, "casual", "лето"),
+    "кюлоты":               (2, False, "casual", "универсальная"),
+    "велосипедки":          (1, False, "sport", "лето"),
+    "палаццо":              (2, False, "business", "лето"),
+    # Обувь
+    "кроссовки":            (2, False, "sport", "демисезон"),
+    "беговые кроссовки":    (2, False, "sport", "лето"),
+    "высокие кроссовки":    (2, False, "sport", "демисезон"),
+    "ботинки":              (3, True,  "casual", "демисезон"),
+    "зимние ботинки":       (4, True,  "casual", "зима"),
+    "ботильоны":            (3, False, "casual", "демисезон"),
+    "сапоги":               (4, True,  "casual", "демисезон"),
+    "ботфорты":             (3, False, "business", "демисезон"),
+    "угги":                 (4, True,  "casual", "зима"),
+    "туфли":                (2, False, "business", "универсальная"),
+    "классические туфли":   (2, False, "business", "универсальная"),
+    "лоферы":               (2, False, "business", "универсальная"),
+    "мокасины":             (2, False, "casual", "универсальная"),
+    "эспадрильи":           (1, False, "casual", "лето"),
+    "слипоны":              (2, False, "casual", "лето"),
+    "балетки":              (1, False, "casual", "лето"),
+    "сандалии":             (1, False, "casual", "лето"),
+    "каблуки":              (2, False, "business", "универсальная"),
+    # Аксессуары
+    "шляпа":                (2, False, "casual", "лето"),
+    "зимняя шапка":         (4, False, "casual", "зима"),
+    "шапка-бини":           (4, False, "casual", "зима"),
+    "берет":                (2, False, "casual", "демисезон"),
+    "кепка":                (1, False, "casual", "лето"),
+    "бейсболка":            (1, False, "casual", "лето"),
+    "фуражка":              (2, False, "business", "универсальная"),
+    "шарф":                 (4, False, "casual", "зима"),
+    "снуд":                 (4, False, "casual", "зима"),
+    "палантин":             (3, False, "business", "демисезон"),
+    "перчатки":             (3, False, "casual", "зима"),
+    "варежки":              (4, False, "casual", "зима"),
+    "ремень":               (1, False, "business", "универсальная"),
+    "сумка":                (1, False, "casual", "универсальная"),
+    "рюкзак":               (1, False, "casual", "универсальная"),
+    "портфель":             (1, False, "business", "универсальная"),
+    "кошелёк":              (1, False, "business", "универсальная"),
+    "галстук":              (1, False, "business", "универсальная"),
+    "бабочка":              (1, False, "business", "универсальная"),
+    "носки":                (1, False, "casual", "универсальная"),
+    "колготки":             (2, False, "business", "демисезон"),
+    "чулки":                (1, False, "business", "универсальная"),
 }
 
 
 # ---------- Определение цвета ----------
 
 def _rgb_to_color_name(r: int, g: int, b: int) -> str:
-    """Классификация цвета по HSV.
-
-    Порядок проверок важен:
-      1. Ахроматические (низкая saturation).
-      2. Кремовый — очень светлый + слабо насыщенный.
-      3. Бежевый — слабо-умеренно насыщенный + средний-светлый + тёплый.
-         Проверяется ДО коричневого, чтобы хаки и песочный не проваливались
-         в коричневый.
-      4. Коричневый — умеренно насыщенный + тёмный + тёплый.
-      5. Navy — тёмный + синий диапазон.
-      6. Красный / бордовый / розовый.
-      7. Оранжевый / терракотовый.
-      8. Жёлтый / горчичный — граница 55° (не 65°), иначе оливковый
-         уходит в горчичный.
-      9. Зелёный / оливковый / хаки / мятный.
-     10. Голубой / бирюзовый.
-     11. Синий.
-     12. Фиолетовый / сиреневый.
-     13. Розовый / лиловый.
-    """
+    """Классификация цвета по HSV."""
     h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
     h_deg = h * 360
     s_pct = s * 100
@@ -255,23 +376,21 @@ def _rgb_to_color_name(r: int, g: int, b: int) -> str:
             return "светло-серый"
         return "белый"
 
-    # 2. Кремовый — очень светлый + слабо насыщенный
+    # 2. Кремовый
     if v_pct > 88 and s_pct < 35:
         return "кремовый"
 
-    # 3. Бежевый — слабо-умеренно насыщенный + средний-светлый + тёплый.
-    #    s < 45 и v > 45 покрывают хаки, песочный, светлый серо-бежевый.
+    # 3. Бежевый — до коричневого, чтобы хаки не проваливался в коричневый
     if 15 <= h_deg < 60 and s_pct < 45 and v_pct > 45:
         return "бежевый"
 
-    # 4. Коричневый — умеренно насыщенный + тёмный + тёплый.
-    #    v < 45 — ниже бежевого, чтобы области не пересекались.
+    # 4. Коричневый
     if 10 <= h_deg < 55 and v_pct < 45:
         if v_pct < 25:
             return "тёмно-коричневый"
         return "коричневый"
 
-    # 5. Тёмно-синий / navy
+    # 5. Navy
     if 200 <= h_deg < 260 and v_pct < 45:
         return "тёмно-синий"
 
@@ -331,23 +450,10 @@ def _rgb_to_color_name(r: int, g: int, b: int) -> str:
 
 
 def detect_color(image_bytes: bytes) -> tuple[str, list[str]]:
-    """Определить доминирующий цвет и топ-3.
-
-    Шаги:
-      1. Кадрирование 20% и уменьшение до 200×200.
-      2. Проверка на «преимущественно чёрный»: если > 35% пикселей
-         тёмные и нейтральные (v < 0.22 и s < 0.25) — сразу «чёрный».
-         Это важно, потому что блеск на чёрной ткани даёт паразитный
-         оттенок, и голосование уводит цвет в фиолетовый или синий.
-      3. Фильтр по saturation: оставляем цветные пиксели (для тёмных
-         порог 30%, для остальных 12%). Отсеивает фон.
-      4. Взвешенное голосование — цветные пиксели весят больше.
-      5. Отладочный лог top-3 с их средними HSV.
-    """
+    """Определить доминирующий цвет и топ-3."""
     img = Image.open(BytesIO(image_bytes)).convert("RGB")
     img.thumbnail((200, 200))
 
-    # 1. Кадрирование 20%
     w, h = img.size
     margin_x = int(w * 0.20)
     margin_y = int(h * 0.20)
@@ -357,7 +463,7 @@ def detect_color(image_bytes: bytes) -> tuple[str, list[str]]:
     if not pixels:
         return "неизвестный", []
 
-    # 2. Проверка на «преимущественно чёрный»
+    # Проверка на «преимущественно чёрный»
     dark_neutral = 0
     for p in pixels:
         r, g, b = p
@@ -373,7 +479,7 @@ def detect_color(image_bytes: bytes) -> tuple[str, list[str]]:
         )
         return "чёрный", ["чёрный", "тёмно-серый", "тёмно-синий"]
 
-    # 3. Фильтр по saturation
+    # Фильтр по saturation
     colored_pixels = []
     for p in pixels:
         r, g, b = p
@@ -388,7 +494,6 @@ def detect_color(image_bytes: bytes) -> tuple[str, list[str]]:
     colored_ratio = len(colored_pixels) / len(pixels)
     source_pixels = colored_pixels if colored_ratio >= 0.15 else pixels
 
-    # 4. Взвешенное голосование
     name_weights: dict[str, float] = {}
     name_hsv: dict[str, list[tuple[float, float, float]]] = {}
 
@@ -407,7 +512,6 @@ def detect_color(image_bytes: bytes) -> tuple[str, list[str]]:
     primary = sorted_names[0][0]
     top3 = [name for name, _ in sorted_names[:3]]
 
-    # 5. Отладочный лог top-3
     debug_parts = []
     for name, weight in sorted_names[:3]:
         samples = name_hsv.get(name, [])
@@ -426,7 +530,7 @@ def detect_color(image_bytes: bytes) -> tuple[str, list[str]]:
     return primary, top3
 
 
-# ---------- Распознавание одежды ----------
+# ---------- Распознавание одежды и материала ----------
 
 _model = None
 _preprocess = None
@@ -446,6 +550,31 @@ def _get_model():
     return _model, _preprocess, _tokenizer
 
 
+def _clip_classify(image, labels: list[str]) -> list[dict]:
+    """Прогнать CLIP по изображению с набором меток.
+
+    Возвращает список {"label": ..., "score": ...} по убыванию score.
+    """
+    model, preprocess, tokenizer = _get_model()
+    image_input = preprocess(image).unsqueeze(0)
+    text_inputs = tokenizer(labels)
+
+    with torch.no_grad():
+        image_features = model.encode_image(image_input)
+        text_features = model.encode_text(text_inputs)
+        image_features /= image_features.norm(dim=-1, keepdim=True)
+        text_features /= text_features.norm(dim=-1, keepdim=True)
+        similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1)
+
+    probs = similarity[0].tolist()
+    results = [
+        {"label": label, "score": prob}
+        for label, prob in zip(labels, probs)
+    ]
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return results
+
+
 def _build_option(en_label: str, confidence: float) -> dict | None:
     ru_type, category = LABEL_MAP.get(en_label, (None, None))
     if ru_type is None:
@@ -463,29 +592,28 @@ def _build_option(en_label: str, confidence: float) -> dict | None:
     }
 
 
+def _detect_material(image, results: list[dict]) -> str:
+    """Определить материал по уже полученным результатам CLIP.
+
+    Принимает image и список результатов CLIP (отдельный вызов по MATERIAL_LABELS).
+    Возвращает русское название материала или пустую строку.
+    """
+    if not results:
+        return ""
+    top = results[0]
+    if float(top["score"]) < MATERIAL_THRESHOLD:
+        return ""
+    return MATERIAL_MAP.get(top["label"], "")
+
+
 async def classify_clothing(image_bytes: bytes) -> dict:
-    """Распознать вещь и вернуть топ-1 и топ-3 варианта."""
+    """Распознать вещь: тип, материал, цвет."""
     color_primary, color_candidates = detect_color(image_bytes)
 
     try:
-        model, preprocess, tokenizer = _get_model()
         image = Image.open(BytesIO(image_bytes)).convert("RGB")
-        image_input = preprocess(image).unsqueeze(0)
-        text_inputs = tokenizer(ENGLISH_LABELS)
-
-        with torch.no_grad():
-            image_features = model.encode_image(image_input)
-            text_features = model.encode_text(text_inputs)
-            image_features /= image_features.norm(dim=-1, keepdim=True)
-            text_features /= text_features.norm(dim=-1, keepdim=True)
-            similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1)
-
-        probs = similarity[0].tolist()
-        results = [
-            {"label": label, "score": prob}
-            for label, prob in zip(ENGLISH_LABELS, probs)
-        ]
-        results.sort(key=lambda x: x["score"], reverse=True)
+        results = _clip_classify(image, ENGLISH_LABELS)
+        material_results = _clip_classify(image, MATERIAL_LABELS)
     except Exception:
         logger.exception("Ошибка классификации")
         return {
@@ -494,11 +622,14 @@ async def classify_clothing(image_bytes: bytes) -> dict:
             "color_candidates": color_candidates,
         }
 
+    material = _detect_material(image, material_results)
+
     if not results:
         return {
             "ok": False,
             "color": color_primary,
             "color_candidates": color_candidates,
+            "material": material,
         }
 
     options: list[dict] = []
@@ -527,6 +658,7 @@ async def classify_clothing(image_bytes: bytes) -> dict:
             "ok": False,
             "color": color_primary,
             "color_candidates": color_candidates,
+            "material": material,
         }
 
     if top_confidence < CONFIDENCE_THRESHOLD:
@@ -534,12 +666,14 @@ async def classify_clothing(image_bytes: bytes) -> dict:
             "ok": False,
             "color": color_primary,
             "color_candidates": color_candidates,
+            "material": material,
         }
 
     top = options[0]
     logger.info(
-        "Распознавание: top=%s (%.3f) category=%s color=%s, вариантов=%d",
-        top["type"], top["confidence"], top["category"], color_primary, len(options),
+        "Распознавание: top=%s (%.3f) category=%s color=%s material=%s, вариантов=%d",
+        top["type"], top["confidence"], top["category"],
+        color_primary, material, len(options),
     )
 
     return {
@@ -549,6 +683,7 @@ async def classify_clothing(image_bytes: bytes) -> dict:
         "confidence": top["confidence"],
         "color": color_primary,
         "color_candidates": color_candidates,
+        "material": material,
         "warmth_level": top["warmth_level"],
         "waterproof": top["waterproof"],
         "formal_level": top["formal_level"],

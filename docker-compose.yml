@@ -1,0 +1,23 @@
+services:
+  bot:
+    build: .
+    image: wardrobe-bot:latest
+    container_name: wardrobe-bot
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Перекрывает DATABASE_URL из .env: БД лежит в томе wardrobe_data
+      DATABASE_URL: sqlite+aiosqlite:////app/data/wardrobe.db
+    volumes:
+      - wardrobe_data:/app/data
+      # Кэш весов MobileCLIP, чтобы не качать их при каждом пересоздании контейнера
+      - hf_cache:/home/user/.cache/huggingface
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  wardrobe_data:
+  hf_cache:

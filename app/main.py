@@ -1,5 +1,3 @@
-"""Точка входа Telegram-бота."""
-
 import asyncio
 import logging
 
@@ -13,7 +11,6 @@ from app.db.database import init_db
 
 
 def setup_logging() -> None:
-    """Настроить логирование в консоль."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -21,11 +18,9 @@ def setup_logging() -> None:
 
 
 async def main() -> None:
-    """Создать бота, подключить роутеры и запустить polling."""
     setup_logging()
     logger = logging.getLogger(__name__)
 
-    # Инициализация БД: создаём таблицы, если их нет
     await init_db()
 
     bot = Bot(

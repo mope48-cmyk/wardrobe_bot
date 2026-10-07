@@ -99,7 +99,7 @@ async def update_item_field(
     перезаписать id, user_id или created_at.
     """
     allowed = {
-        "category", "type", "color", "warmth_level",
+        "category", "type", "color", "material", "warmth_level",
         "waterproof", "formal_level", "season",
     }
     if field not in allowed:

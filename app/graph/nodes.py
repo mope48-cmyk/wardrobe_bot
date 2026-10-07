@@ -98,7 +98,7 @@ async def _persist_item(state: BotState, draft: dict) -> dict:
             category=draft["category"],
             type=draft["type"],
             color=draft["color"],
-            material="",
+            material=draft.get("material", ""),
             warmth_level=draft["warmth_level"],
             waterproof=draft["waterproof"],
             formal_level=draft["formal_level"],
@@ -147,7 +147,14 @@ WELCOME_TEXT = (
     "/list — показать гардероб\n"
     "/outfit — подобрать комплект по погоде\n"
     "/help — справка\n"
-    "/cancel — отменить текущее действие"
+    "/cancel — отменить текущее действие\n\n"
+    "─────────────\n"
+    "<b>С пацанами бахнул новый патч 1.1.0</b>\n"
+    "Что нового:\n"
+    "• Убрал нахрен кнопку (добавить вещь). Теперь просто шли сюда фото и он добавит.\n"
+    "• Распознаём больше типов одежды: водолазки, боди, карго, ботильоны и другие.\n"
+    "• Определяем материал вещи: хлопок, шерсть, кожа, деним и т.д.\n"
+    "• Точнее определяем цвет — больше не путаем бежевый с коричневым, оливковый с горчичным."
 )
 
 HELP_TEXT = (
@@ -203,9 +210,11 @@ LIST_PREVIEW_LEN = 60  # сколько символов типа показыв
 def _item_caption(item) -> str:
     """Подпись под фото вещи."""
     waterproof_mark = "💧 " if item.waterproof else ""
+    material_line = f"материал: {item.material}\n" if item.material else ""
     return (
         f"<b>{item.category} / {item.type}</b>\n"
         f"цвет: {item.color}\n"
+        f"{material_line}"
         f"{waterproof_mark}тепло: {item.warmth_level}/5, "
         f"стиль: {item.formal_level}, сезон: {item.season}"
     )
@@ -1084,6 +1093,7 @@ async def add_photo_node(state: BotState) -> dict:
     options = result["options"]
     draft["options"] = options
     draft["predicted_color"] = result["color"]
+    draft["predicted_material"] = result.get("material", "")
     draft["confidence"] = result["confidence"]
 
     # Формируем список вариантов в тексте
@@ -1097,6 +1107,7 @@ async def add_photo_node(state: BotState) -> dict:
 
     lines.append("")
     lines.append(f"Цвет: <b>{result['color']}</b>.")
+    lines.append(f"Материал: <b>{result.get('material') or '—'}</b>.")
     lines.append("")
     lines.append(
         "Выберите тип кнопкой ниже. Если ничего не подходит — нажмите "
@@ -1126,6 +1137,7 @@ async def add_confirm_category_node(state: BotState) -> dict:
             draft["category"] = opt["category"]
             draft["type"] = opt["type"]
             draft["color"] = draft.get("predicted_color") or ""
+            draft["material"] = draft.get("predicted_material") or ""
             draft["warmth_level"] = opt["warmth_level"]
             draft["waterproof"] = opt["waterproof"]
             draft["formal_level"] = opt["formal_level"]
@@ -1139,6 +1151,7 @@ async def add_confirm_category_node(state: BotState) -> dict:
             draft["category"] = opt["category"]
             draft["type"] = opt["type"]
             draft["color"] = draft.get("predicted_color") or ""
+            draft["material"] = draft.get("predicted_material") or ""
             draft["warmth_level"] = opt["warmth_level"]
             draft["waterproof"] = opt["waterproof"]
             draft["formal_level"] = opt["formal_level"]
@@ -1147,6 +1160,7 @@ async def add_confirm_category_node(state: BotState) -> dict:
 
     # 3. "другое" или "нет" → ручной ввод
     if text in ("другое", "нет", "no", "неверно", "-"):
+        draft["material"] = draft.get("predicted_material") or ""
         return {
             "messages": [
                 AIMessage(
@@ -1386,8 +1400,9 @@ async def outfit_occasion_node(state: BotState) -> dict:
         for item in cat_items:
             wp = " 💧" if item.waterproof else ""
             mark = " ⚠️" if cat in result.relaxed_categories else ""
+            mat = f" ({item.material})" if item.material else ""
             lines.append(
-                f"• {item.type} — тепло {item.warmth_level}/5, "
+                f"• {item.type}{mat} — тепло {item.warmth_level}/5, "
                 f"{item.formal_level}, {item.season}{wp}{mark}"
             )
         lines.append("")
