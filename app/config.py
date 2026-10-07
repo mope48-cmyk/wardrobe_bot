@@ -21,6 +21,7 @@ class Settings:
     """Настройки приложения. Значения читаются из .env один раз при импорте."""
 
     BOT_TOKEN: str
+    TELEGRAM_API_URL: str
     HF_TOKEN: str
     OWM_API_KEY: str
     DATABASE_URL: str
@@ -41,6 +42,7 @@ def load_settings() -> Settings:
 
     return Settings(
         BOT_TOKEN=bot_token,
+        TELEGRAM_API_URL=_get_env("TELEGRAM_API_URL"),
         HF_TOKEN=_get_env("HF_TOKEN"),
         OWM_API_KEY=_get_env("OWM_API_KEY"),
         DATABASE_URL=_get_env("DATABASE_URL", DATABASE_URL_DEFAULT),

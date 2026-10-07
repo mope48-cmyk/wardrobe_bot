@@ -3,6 +3,8 @@ import logging
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.client.telegram import TelegramAPIServer
 from aiogram.enums import ParseMode
 
 from app.bot.handlers import router
@@ -23,9 +25,21 @@ async def main() -> None:
 
     await init_db()
 
+    # Если задан TELEGRAM_API_URL — идём в Telegram через прокси.
+    # Иначе — напрямую в api.telegram.org.
+    if settings.TELEGRAM_API_URL:
+        logger.info("Используем прокси: %s", settings.TELEGRAM_API_URL)
+        session = AiohttpSession(
+            api=TelegramAPIServer.from_base(settings.TELEGRAM_API_URL)
+        )
+    else:
+        logger.info("Прокси не задан, работаем напрямую с api.telegram.org")
+        session = None
+
     bot = Bot(
         token=settings.BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        session=session,
     )
 
     dp = Dispatcher()
