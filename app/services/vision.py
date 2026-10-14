@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # ---------- Модели ----------
 
 SIGLIP_MODEL_ID = "google/siglip-so400m-patch14-384"
-FLORENCE_MODEL_ID = "microsoft/Florence-2-large-ft"
+FLORENCE_MODEL_ID = "microsoft/Florence-2-base-ft"
 
 SIGLIP_THRESHOLD = 0.15
 
@@ -485,9 +485,10 @@ def _ask_florence(model, processor, image: Image.Image, prompt: str) -> str:
         out = model.generate(
             input_ids=inputs["input_ids"],
             pixel_values=inputs["pixel_values"],
-            max_new_tokens=10,   # было 30 — ответы короткие
-            num_beams=1,         # было 3 — greedy в 3 раза быстрее
+            max_new_tokens=10,
+            num_beams=1,
             do_sample=False,
+            early_stopping=False,
         )
     text = processor.batch_decode(out, skip_special_tokens=False)[0]
     parsed = processor.post_process_generation(
@@ -503,9 +504,7 @@ def _extract_attributes_florence(image: Image.Image) -> dict:
     try:
         answer = _ask_florence(
             model, processor, image,
-            "<VQA>Answer with two words: material and thickness of this garment. "
-            "Material: cotton, wool, leather, denim, silk, polyester, linen, knit, suede, fleece. "
-            "Thickness: thin or thick."
+            "<VQA>What is the material and thickness of this garment?"
         )
     except Exception:
         logger.exception("Ошибка Florence-2")
