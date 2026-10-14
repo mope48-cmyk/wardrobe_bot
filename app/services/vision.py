@@ -375,19 +375,34 @@ def detect_color(image_bytes: bytes) -> tuple[str, list[str]]:
 
 _siglip_model = None
 _siglip_processor = None
+_siglip_text_embeds = None       # кэш текстовых эмбеддингов
+
 _florence_model = None
 _florence_processor = None
 
 
 def _get_siglip():
-    global _siglip_model, _siglip_processor
+    global _siglip_model, _siglip_processor, _siglip_text_embeds
     if _siglip_model is None:
         logger.info("Загружаем SigLIP %s...", SIGLIP_MODEL_ID)
         _siglip_model = AutoModel.from_pretrained(SIGLIP_MODEL_ID)
         _siglip_model.eval()
         _siglip_processor = AutoProcessor.from_pretrained(SIGLIP_MODEL_ID)
-        logger.info("SigLIP загружен")
-    return _siglip_model, _siglip_processor
+
+        # Заранее считаем текстовые эмбеддинги один раз
+        logger.info("Считаем текстовые эмбеддинги SigLIP...")
+        text_inputs = _siglip_processor(
+            text=ENGLISH_LABELS,
+            return_tensors="pt",
+            padding="max_length",
+        )
+        with torch.no_grad():
+            text_embeds = _siglip_model.get_text_features(**text_inputs)
+            text_embeds = text_embeds / text_embeds.norm(dim=-1, keepdim=True)
+            _siglip_text_embeds = text_embeds
+
+        logger.info("SigLIP загружен, эмбеддинги посчитаны")
+    return _siglip_model, _siglip_processor, _siglip_text_embeds
 
 
 def _get_florence():
@@ -408,23 +423,21 @@ def _get_florence():
 # ---------- Классификация типа ----------
 
 def _classify_type_siglip(image: Image.Image, image_bytes: bytes) -> list[dict]:
-    # Проверяем кэш
     cached = _siglip_cache_get(image_bytes)
     if cached is not None:
         return cached
 
-    model, processor = _get_siglip()
+    model, processor, text_embeds = _get_siglip()
 
-    inputs = processor(
-        text=ENGLISH_LABELS,
-        images=image,
-        return_tensors="pt",
-        padding="max_length",
-    )
-
+    # Обрабатываем только изображение — текст уже в кэше
+    image_inputs = processor(images=image, return_tensors="pt")
     with torch.no_grad():
-        outputs = model(**inputs)
-        probs = outputs.logits_per_image.softmax(dim=1)[0]
+        image_embeds = model.get_image_features(**image_inputs)
+        image_embeds = image_embeds / image_embeds.norm(dim=-1, keepdim=True)
+
+        # Повторяем формулу logits_per_image: image @ text.T * logit_scale
+        logits = image_embeds @ text_embeds.T * model.logit_scale.exp()
+        probs = logits.softmax(dim=-1)[0]
 
     results = [
         {"label": label, "score": float(prob)}
@@ -472,8 +485,9 @@ def _ask_florence(model, processor, image: Image.Image, prompt: str) -> str:
         out = model.generate(
             input_ids=inputs["input_ids"],
             pixel_values=inputs["pixel_values"],
-            max_new_tokens=30,
-            num_beams=3,
+            max_new_tokens=10,   # было 30 — ответы короткие
+            num_beams=1,         # было 3 — greedy в 3 раза быстрее
+            do_sample=False,
         )
     text = processor.batch_decode(out, skip_special_tokens=False)[0]
     parsed = processor.post_process_generation(
@@ -483,17 +497,15 @@ def _ask_florence(model, processor, image: Image.Image, prompt: str) -> str:
 
 
 def _extract_attributes_florence(image: Image.Image) -> dict:
-    """Извлечь материал и толщину (только 2 вопроса — минимум времени)."""
+    """Один VQA-вопрос: просим назвать материал и толщину вместе."""
     model, processor = _get_florence()
 
     try:
-        material_raw = _ask_florence(
+        answer = _ask_florence(
             model, processor, image,
-            "<VQA>What material is this garment made of?"
-        )
-        thickness_raw = _ask_florence(
-            model, processor, image,
-            "<VQA>Is this garment thick or thin?"
+            "<VQA>Answer with two words: material and thickness of this garment. "
+            "Material: cotton, wool, leather, denim, silk, polyester, linen, knit, suede, fleece. "
+            "Thickness: thin or thick."
         )
     except Exception:
         logger.exception("Ошибка Florence-2")
@@ -501,19 +513,19 @@ def _extract_attributes_florence(image: Image.Image) -> dict:
 
     material_en = ""
     for key in MATERIAL_MAP:
-        if key in material_raw:
+        if key in answer:
             material_en = key
             break
 
     thickness = ""
     for key, ru in THICKNESS_MAP.items():
-        if key in thickness_raw:
+        if key in answer:
             thickness = ru
             break
 
     logger.info(
-        "Florence: material=%r → %s, thickness=%r → %s",
-        material_raw, material_en, thickness_raw, thickness,
+        "Florence: answer=%r → material=%s, thickness=%s",
+        answer, material_en, thickness,
     )
 
     return {
