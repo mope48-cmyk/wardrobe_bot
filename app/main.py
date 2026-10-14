@@ -1,3 +1,4 @@
+from app.services.vision import warmup
 import asyncio
 import logging
 
@@ -25,6 +26,9 @@ async def main() -> None:
 
     await init_db()
 
+    # Прогрев моделей в фоне, чтобы первый запрос не тормозил
+    asyncio.create_task(asyncio.to_thread(warmup))
+
     # Если задан TELEGRAM_API_URL — идём в Telegram через прокси.
     # Иначе — напрямую в api.telegram.org.
     if settings.TELEGRAM_API_URL:
@@ -48,6 +52,15 @@ async def main() -> None:
     logger.info("Бот запускается. Нажмите Ctrl+C для остановки.")
 
     await bot.delete_webhook(drop_pending_updates=True)
+
+    # Прогреваем модели (SigLIP + Florence-2) до старта polling,
+    # чтобы первый запрос с фото не тормозил.
+    # warmup() синхронный и блокирующий — выносим в отдельный поток,
+    # чтобы не блокировать event loop.
+    logger.info("Прогрев моделей...")
+    await asyncio.to_thread(warmup)
+    logger.info("Прогрев завершён, запускаем polling")
+
     await dp.start_polling(bot)
 
 

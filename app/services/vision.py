@@ -1,14 +1,14 @@
-"""Распознавание одежды через SigLIP (тип) и Florence-2 (материал/толщина).
-
-Цвет определяется отдельно через HSV-анализ пикселей.
-
-Модели загружаются лениво — по первому фото. Каждая модель кэшируется
-в памяти контейнера до перезапуска.
-"""
+"""Распознавание одежды через SigLIP (тип) и Florence-2 (материал/толщина)."""
 
 import colorsys
+import hashlib
 import logging
+import os
 from io import BytesIO
+
+# Настройки потоков CPU — ДО импорта torch
+os.environ.setdefault("OMP_NUM_THREADS", "4")
+os.environ.setdefault("MKL_NUM_THREADS", "4")
 
 import torch
 from PIL import Image
@@ -18,6 +18,9 @@ from transformers import (
     AutoProcessor,
 )
 
+# Явно ограничиваем число потоков torch
+torch.set_num_threads(4)
+
 logger = logging.getLogger(__name__)
 
 # ---------- Модели ----------
@@ -25,14 +28,36 @@ logger = logging.getLogger(__name__)
 SIGLIP_MODEL_ID = "google/siglip-so400m-patch14-384"
 FLORENCE_MODEL_ID = "microsoft/Florence-2-large-ft"
 
-# Порог уверенности SigLIP: если топ-1 ниже — считаем распознавание неудачным
 SIGLIP_THRESHOLD = 0.15
 
+# Кэш SigLIP: ключ — md5 изображения, значение — список options
+_SIGLIP_CACHE_MAX = 128
+_siglip_cache: dict[str, list[dict]] = {}
+_siglip_cache_order: list[str] = []
 
-# ---------- Метки для SigLIP ----------
+
+def _siglip_cache_get(image_bytes: bytes) -> list[dict] | None:
+    key = hashlib.md5(image_bytes).hexdigest()
+    if key in _siglip_cache:
+        logger.debug("SigLIP cache hit: %s", key[:8])
+        return _siglip_cache[key]
+    return None
+
+
+def _siglip_cache_set(image_bytes: bytes, result: list[dict]) -> None:
+    key = hashlib.md5(image_bytes).hexdigest()
+    if key in _siglip_cache:
+        return
+    _siglip_cache[key] = result
+    _siglip_cache_order.append(key)
+    if len(_siglip_cache_order) > _SIGLIP_CACHE_MAX:
+        old_key = _siglip_cache_order.pop(0)
+        _siglip_cache.pop(old_key, None)
+
+
+# ---------- Метки ----------
 
 ENGLISH_LABELS = [
-    # Верхняя одежда
     "a jacket", "a winter jacket",
     "a coat", "a long coat",
     "a raincoat", "a waterproof jacket",
@@ -42,23 +67,17 @@ ENGLISH_LABELS = [
     "a denim jacket",
     "a suit jacket", "a blazer",
     "a bomber jacket", "a parka", "a trench coat",
-    # Свитеры и средний слой
     "a sweater", "a knitted sweater", "a wool sweater",
     "a hoodie", "a sweatshirt", "a cardigan",
     "a vest", "a turtleneck", "a long-sleeve shirt",
-    # Лёгкий верх
     "a shirt", "a t-shirt", "a polo shirt",
     "a blouse", "a top", "a tank top",
     "a dress",
-    # Низ
     "trousers", "jeans", "shorts",
     "a skirt", "leggings", "sweatpants", "joggers",
-    # Обувь
     "sneakers", "boots", "shoes", "sandals", "heels",
-    # Аксессуары
     "a hat", "a beanie", "a cap", "a scarf", "gloves",
     "a belt", "a bag", "a backpack",
-    # НЕГАТИВНЫЕ
     "a landscape", "a room interior", "furniture",
     "food", "an animal", "a person's face",
     "a text document", "an empty background",
@@ -124,9 +143,6 @@ NEGATIVE_LABELS = {
     "a text document", "an empty background",
 }
 
-
-# ---------- TYPE_DEFAULTS ----------
-
 TYPE_DEFAULTS = {
     "куртка":              (4, False, "casual", "демисезон"),
     "зимняя куртка":       (5, True,  "casual", "зима"),
@@ -181,9 +197,6 @@ TYPE_DEFAULTS = {
     "рюкзак":              (1, False, "casual", "универсальная"),
 }
 
-
-# ---------- Материалы (английский → русский) ----------
-
 MATERIAL_MAP = {
     "cotton": "хлопок",
     "wool": "шерсть",
@@ -220,7 +233,6 @@ THICKNESS_MAP = {
 # ---------- Определение цвета ----------
 
 def _rgb_to_color_name(r: int, g: int, b: int) -> str:
-    """Классификация цвета по HSV."""
     h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
     h_deg = h * 360
     s_pct = s * 100
@@ -299,7 +311,6 @@ def _rgb_to_color_name(r: int, g: int, b: int) -> str:
 
 
 def detect_color(image_bytes: bytes) -> tuple[str, list[str]]:
-    """Определить доминирующий цвет и топ-3."""
     img = Image.open(BytesIO(image_bytes)).convert("RGB")
     img.thumbnail((200, 200))
 
@@ -360,7 +371,7 @@ def detect_color(image_bytes: bytes) -> tuple[str, list[str]]:
     return primary, top3
 
 
-# ---------- Загрузка моделей (ленивая) ----------
+# ---------- Загрузка моделей ----------
 
 _siglip_model = None
 _siglip_processor = None
@@ -369,7 +380,6 @@ _florence_processor = None
 
 
 def _get_siglip():
-    """Загрузить SigLIP один раз. Возвращает (model, processor)."""
     global _siglip_model, _siglip_processor
     if _siglip_model is None:
         logger.info("Загружаем SigLIP %s...", SIGLIP_MODEL_ID)
@@ -381,7 +391,6 @@ def _get_siglip():
 
 
 def _get_florence():
-    """Загрузить Florence-2 один раз. Возвращает (model, processor)."""
     global _florence_model, _florence_processor
     if _florence_model is None:
         logger.info("Загружаем Florence-2 %s...", FLORENCE_MODEL_ID)
@@ -396,10 +405,14 @@ def _get_florence():
     return _florence_model, _florence_processor
 
 
-# ---------- Классификация типа через SigLIP ----------
+# ---------- Классификация типа ----------
 
-def _classify_type_siglip(image: Image.Image) -> list[dict]:
-    """Вернуть топ-3 типа с уверенностью."""
+def _classify_type_siglip(image: Image.Image, image_bytes: bytes) -> list[dict]:
+    # Проверяем кэш
+    cached = _siglip_cache_get(image_bytes)
+    if cached is not None:
+        return cached
+
     model, processor = _get_siglip()
 
     inputs = processor(
@@ -447,13 +460,13 @@ def _classify_type_siglip(image: Image.Image) -> list[dict]:
         if len(options) >= 3:
             break
 
+    _siglip_cache_set(image_bytes, options)
     return options
 
 
-# ---------- Извлечение атрибутов через Florence ----------
+# ---------- Атрибуты через Florence ----------
 
 def _ask_florence(model, processor, image: Image.Image, prompt: str) -> str:
-    """Задать один VQA-вопрос Florence-2, вернуть ответ строкой."""
     inputs = processor(text=prompt, images=image, return_tensors="pt")
     with torch.no_grad():
         out = model.generate(
@@ -470,15 +483,7 @@ def _ask_florence(model, processor, image: Image.Image, prompt: str) -> str:
 
 
 def _extract_attributes_florence(image: Image.Image) -> dict:
-    """Извлечь материал и толщину через Florence-2.
-
-    Возвращает:
-    {
-        "material_en": "cotton" | "",
-        "material_ru": "хлопок" | "",
-        "thickness": "тонкая" | "средняя" | "толстая" | "",
-    }
-    """
+    """Извлечь материал и толщину (только 2 вопроса — минимум времени)."""
     model, processor = _get_florence()
 
     try:
@@ -494,7 +499,6 @@ def _extract_attributes_florence(image: Image.Image) -> dict:
         logger.exception("Ошибка Florence-2")
         return {"material_en": "", "material_ru": "", "thickness": ""}
 
-    # Парсим материал: ищем известное слово в ответе
     material_en = ""
     for key in MATERIAL_MAP:
         if key in material_raw:
@@ -508,7 +512,7 @@ def _extract_attributes_florence(image: Image.Image) -> dict:
             break
 
     logger.info(
-        "Florence: material_raw=%r → %s, thickness_raw=%r → %s",
+        "Florence: material=%r → %s, thickness=%r → %s",
         material_raw, material_en, thickness_raw, thickness,
     )
 
@@ -519,11 +523,36 @@ def _extract_attributes_florence(image: Image.Image) -> dict:
     }
 
 
+# ---------- Прогрев ----------
+
+def warmup() -> None:
+    """Загрузить модели и прогнать пробный инференс.
+
+    Без этого первый реальный запрос будет ждать загрузки и компиляции
+    графов torch — до 2–3 минут.
+    """
+    logger.info("Прогрев моделей начался...")
+    _get_siglip()
+    _get_florence()
+
+    # Пробный инференс — прогоняем серое пустое изображение
+    dummy_img = Image.new("RGB", (384, 384), color=(128, 128, 128))
+    dummy_bytes = BytesIO()
+    dummy_img.save(dummy_bytes, format="JPEG")
+    dummy_data = dummy_bytes.getvalue()
+
+    # SigLIP
+    _classify_type_siglip(dummy_img, dummy_data)
+    # Florence
+    _extract_attributes_florence(dummy_img)
+
+    logger.info("Прогрев моделей завершён")
+
+
 # ---------- Главная функция ----------
 
 async def classify_clothing(image_bytes: bytes) -> dict:
     """Распознать вещь: тип (SigLIP), материал и толщина (Florence), цвет (HSV)."""
-    # 1. Цвет (без моделей)
     color_primary, color_candidates = detect_color(image_bytes)
 
     try:
@@ -536,9 +565,8 @@ async def classify_clothing(image_bytes: bytes) -> dict:
             "color_candidates": color_candidates,
         }
 
-    # 2. Тип через SigLIP
     try:
-        options = _classify_type_siglip(image)
+        options = _classify_type_siglip(image, image_bytes)
     except Exception:
         logger.exception("Ошибка SigLIP")
         return {
@@ -559,7 +587,6 @@ async def classify_clothing(image_bytes: bytes) -> dict:
             "color_candidates": color_candidates,
         }
 
-    # 3. Атрибуты через Florence
     attrs = _extract_attributes_florence(image)
 
     top = options[0]
