@@ -35,9 +35,22 @@ STEP_KEYBOARDS: dict[str, list[list[str]]] = {
     "awaiting_formal": [["casual", "business", "sport"], ["❌ Отмена"]],
     "awaiting_season": [["лето", "демисезон"], ["зима", "универсальная"], ["❌ Отмена"]],
     "awaiting_location": [["❌ Отмена"]],
+    "awaiting_material": [
+        ["Хлопок", "Шерсть"],
+        ["Кожа", "Деним"],
+        ["Трикотаж", "Синтетика"],
+        ["Другое", "❌ Отмена"],
+    ],
 }
 
 OCCASION_KEYBOARD = [["работа", "прогулка"], ["спорт", "встреча"], ["другое"], ["❌ Отмена"]]
+
+MATERIAL_KEYBOARD = [
+    ["Хлопок", "Шерсть"],
+    ["Кожа", "Деним"],
+    ["Трикотаж", "Синтетика"],
+    ["Другое", "❌ Отмена"],
+]
 
 REMOVE_KB = "remove"
 
@@ -941,6 +954,7 @@ async def list_delete_cancel_node(state: BotState) -> dict:
 VALID_CATEGORIES = {"верх", "низ", "обувь", "аксессуар"}
 VALID_FORMAL = {"casual", "business", "sport"}
 VALID_SEASON = {"лето", "демисезон", "зима", "универсальная"}
+VALID_MATERIALS = {"хлопок", "шерсть", "кожа", "деним", "трикотаж", "синтетика"}
 
 STEP_TO_FIELD = {
     "awaiting_category": "category",
@@ -950,6 +964,7 @@ STEP_TO_FIELD = {
     "awaiting_waterproof": "waterproof",
     "awaiting_formal": "formal_level",
     "awaiting_season": "season",
+    "awaiting_material": "material",
 }
 
 NEXT_STEP = {
@@ -973,6 +988,10 @@ NEXT_STEP = {
     "awaiting_formal": (
         "awaiting_season",
         "Для какого сезона? Варианты: лето, демисезон, зима, универсальная:",
+    ),
+    "awaiting_season": (
+        "awaiting_material",
+        "Из чего сделана вещь? Выберите материал:",
     ),
 }
 
@@ -1024,6 +1043,11 @@ def _validate_answer(step: str, text: str) -> tuple[bool, object, str]:
         if lower in VALID_SEASON:
             return True, lower, ""
         return False, None, "Выберите: лето, демисезон, зима или универсальная."
+
+    if step == "awaiting_material":
+        if lower in VALID_MATERIALS:
+            return True, lower, ""
+        return False, None, "Выберите материал кнопкой из списка."
 
     return False, None, "Неизвестный шаг."
 
@@ -1093,7 +1117,6 @@ async def add_photo_node(state: BotState) -> dict:
     options = result["options"]
     draft["options"] = options
     draft["predicted_color"] = result["color"]
-    draft["predicted_material"] = result.get("material", "")
     draft["confidence"] = result["confidence"]
 
     # Формируем список вариантов в тексте
@@ -1107,7 +1130,6 @@ async def add_photo_node(state: BotState) -> dict:
 
     lines.append("")
     lines.append(f"Цвет: <b>{result['color']}</b>.")
-    lines.append(f"Материал: <b>{result.get('material') or '—'}</b>.")
     lines.append("")
     lines.append(
         "Выберите тип кнопкой ниже. Если ничего не подходит — нажмите "
@@ -1137,12 +1159,20 @@ async def add_confirm_category_node(state: BotState) -> dict:
             draft["category"] = opt["category"]
             draft["type"] = opt["type"]
             draft["color"] = draft.get("predicted_color") or ""
-            draft["material"] = draft.get("predicted_material") or ""
             draft["warmth_level"] = opt["warmth_level"]
             draft["waterproof"] = opt["waterproof"]
             draft["formal_level"] = opt["formal_level"]
             draft["season"] = opt["season"]
-            return await _persist_item(state, draft)
+            return {
+                "messages": [
+                    AIMessage(
+                        content="Из чего сделана вещь? Выберите материал:",
+                        additional_kwargs=_kb_for_step("awaiting_material"),
+                    )
+                ],
+                "step": "awaiting_material",
+                "draft_item": draft,
+            }
 
     # 2. "да" → принять топ-1
     if text in ("да", "yes", "верно", "ага", "ok", "+"):
@@ -1151,16 +1181,23 @@ async def add_confirm_category_node(state: BotState) -> dict:
             draft["category"] = opt["category"]
             draft["type"] = opt["type"]
             draft["color"] = draft.get("predicted_color") or ""
-            draft["material"] = draft.get("predicted_material") or ""
             draft["warmth_level"] = opt["warmth_level"]
             draft["waterproof"] = opt["waterproof"]
             draft["formal_level"] = opt["formal_level"]
             draft["season"] = opt["season"]
-            return await _persist_item(state, draft)
+            return {
+                "messages": [
+                    AIMessage(
+                        content="Из чего сделана вещь? Выберите материал:",
+                        additional_kwargs=_kb_for_step("awaiting_material"),
+                    )
+                ],
+                "step": "awaiting_material",
+                "draft_item": draft,
+            }
 
     # 3. "другое" или "нет" → ручной ввод
     if text in ("другое", "нет", "no", "неверно", "-"):
-        draft["material"] = draft.get("predicted_material") or ""
         return {
             "messages": [
                 AIMessage(
@@ -1203,7 +1240,16 @@ async def add_attribute_node(state: BotState) -> dict:
     draft[STEP_TO_FIELD[step]] = value
 
     if step == "awaiting_season":
-        return await _persist_item(state, draft)
+        return {
+            "messages": [
+                AIMessage(
+                    content="Из чего сделана вещь? Выберите материал:",
+                    additional_kwargs=_kb_for_step("awaiting_material"),
+                )
+            ],
+            "step": "awaiting_material",
+            "draft_item": draft,
+        }
 
     next_step, question = NEXT_STEP[step]
     return {
@@ -1216,6 +1262,51 @@ async def add_attribute_node(state: BotState) -> dict:
         "step": next_step,
         "draft_item": draft,
     }
+
+
+async def add_material_node(state: BotState) -> dict:
+    """Обработка выбора материала кнопкой."""
+    text = (state.get("input_text") or "").strip().lower()
+    draft = dict(state.get("draft_item") or {})
+
+    # «Другое» — текстовый ввод
+    if text == "другое":
+        return {
+            "messages": [
+                AIMessage(
+                    content="Введите материал текстом (например: лён, кашемир, вискоза):"
+                )
+            ],
+            "step": "awaiting_material_text",
+            "draft_item": draft,
+        }
+
+    valid, value, error = _validate_answer("awaiting_material", text)
+    if not valid:
+        return {
+            "messages": [
+                AIMessage(
+                    content=error,
+                    additional_kwargs=_kb_for_step("awaiting_material"),
+                )
+            ]
+        }
+
+    draft["material"] = value
+    return await _persist_item(state, draft)
+
+
+async def add_material_text_node(state: BotState) -> dict:
+    """Свободный ввод материала."""
+    text = (state.get("input_text") or "").strip()
+    if len(text) < 2:
+        return {
+            "messages": [AIMessage(content="Слишком коротко. Напишите материал.")]
+        }
+
+    draft = dict(state.get("draft_item") or {})
+    draft["material"] = text
+    return await _persist_item(state, draft)
 
 
 # ---------- /outfit ----------
