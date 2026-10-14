@@ -525,27 +525,32 @@ def _extract_attributes_florence(image: Image.Image) -> dict:
 
 # ---------- Прогрев ----------
 
+_warmed_up = False
+
+
 def warmup() -> None:
     """Загрузить модели и прогнать пробный инференс.
 
-    Без этого первый реальный запрос будет ждать загрузки и компиляции
-    графов torch — до 2–3 минут.
+    Идемпотентна — повторный вызов ничего не делает.
     """
+    global _warmed_up
+    if _warmed_up:
+        logger.info("Прогрев уже выполнен, пропускаем")
+        return
+
     logger.info("Прогрев моделей начался...")
     _get_siglip()
     _get_florence()
 
-    # Пробный инференс — прогоняем серое пустое изображение
     dummy_img = Image.new("RGB", (384, 384), color=(128, 128, 128))
     dummy_bytes = BytesIO()
     dummy_img.save(dummy_bytes, format="JPEG")
     dummy_data = dummy_bytes.getvalue()
 
-    # SigLIP
     _classify_type_siglip(dummy_img, dummy_data)
-    # Florence
     _extract_attributes_florence(dummy_img)
 
+    _warmed_up = True
     logger.info("Прогрев моделей завершён")
 
 

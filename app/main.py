@@ -1,4 +1,3 @@
-from app.services.vision import warmup
 import asyncio
 import logging
 
@@ -11,6 +10,7 @@ from aiogram.enums import ParseMode
 from app.bot.handlers import router
 from app.config import settings
 from app.db.database import init_db
+from app.services.vision import warmup
 
 
 def setup_logging() -> None:
@@ -26,11 +26,7 @@ async def main() -> None:
 
     await init_db()
 
-    # Прогрев моделей в фоне, чтобы первый запрос не тормозил
-    asyncio.create_task(asyncio.to_thread(warmup))
-
     # Если задан TELEGRAM_API_URL — идём в Telegram через прокси.
-    # Иначе — напрямую в api.telegram.org.
     if settings.TELEGRAM_API_URL:
         logger.info("Используем прокси: %s", settings.TELEGRAM_API_URL)
         session = AiohttpSession(
@@ -49,18 +45,15 @@ async def main() -> None:
     dp = Dispatcher()
     dp.include_router(router)
 
-    logger.info("Бот запускается. Нажмите Ctrl+C для остановки.")
-
     await bot.delete_webhook(drop_pending_updates=True)
 
-    # Прогреваем модели (SigLIP + Florence-2) до старта polling,
-    # чтобы первый запрос с фото не тормозил.
-    # warmup() синхронный и блокирующий — выносим в отдельный поток,
-    # чтобы не блокировать event loop.
+    # Прогреваем модели до старта polling, чтобы первое фото не тормозило.
+    # warmup() синхронный и блокирующий — выносим в отдельный поток.
     logger.info("Прогрев моделей...")
     await asyncio.to_thread(warmup)
     logger.info("Прогрев завершён, запускаем polling")
 
+    logger.info("Бот запускается. Нажмите Ctrl+C для остановки.")
     await dp.start_polling(bot)
 
 
