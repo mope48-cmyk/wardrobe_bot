@@ -19,6 +19,8 @@ import torch
 from PIL import Image
 from transformers import AutoModel, AutoProcessor
 
+from app.services.segmentation import crop_garment, warmup_segmentation
+
 torch.set_num_threads(4)
 
 logger = logging.getLogger(__name__)
@@ -70,7 +72,10 @@ ENGLISH_LABELS = [
     "a dress",
     "trousers", "jeans", "shorts",
     "a skirt", "leggings", "sweatpants", "joggers",
-    "sneakers", "boots", "shoes", "sandals", "heels",
+    "sneakers", "high-top sneakers", "running shoes",
+    "boots", "ankle boots", "winter boots",
+    "shoes", "loafers", "ballet flats", "slippers",
+    "sandals", "heels",
     "a hat", "a beanie", "a cap", "a scarf", "gloves",
     "a belt", "a bag", "a backpack",
     "a landscape", "a room interior", "furniture",
@@ -118,8 +123,15 @@ LABEL_MAP = {
     "sweatpants": ("спортивные штаны", "низ"),
     "joggers": ("джоггеры", "низ"),
     "sneakers": ("кроссовки", "обувь"),
+    "high-top sneakers": ("высокие кроссовки", "обувь"),
+    "running shoes": ("беговые кроссовки", "обувь"),
     "boots": ("ботинки", "обувь"),
+    "ankle boots": ("ботильоны", "обувь"),
+    "winter boots": ("зимние ботинки", "обувь"),
     "shoes": ("туфли", "обувь"),
+    "loafers": ("лоферы", "обувь"),
+    "ballet flats": ("балетки", "обувь"),
+    "slippers": ("тапочки", "обувь"),
     "sandals": ("сандалии", "обувь"),
     "heels": ("каблуки", "обувь"),
     "a hat": ("шляпа", "аксессуар"),
@@ -178,8 +190,15 @@ TYPE_DEFAULTS = {
     "спортивные штаны":    (2, False, "sport", "демисезон"),
     "джоггеры":            (2, False, "sport", "демисезон"),
     "кроссовки":           (2, False, "sport", "демисезон"),
+    "высокие кроссовки":   (2, False, "sport", "демисезон"),
+    "беговые кроссовки":   (2, False, "sport", "лето"),
     "ботинки":             (3, True,  "casual", "демисезон"),
+    "ботильоны":           (3, False, "casual", "демисезон"),
+    "зимние ботинки":      (4, True,  "casual", "зима"),
     "туфли":               (2, False, "business", "универсальная"),
+    "лоферы":              (2, False, "business", "универсальная"),
+    "балетки":             (1, False, "casual", "лето"),
+    "тапочки":             (1, False, "casual", "универсальная"),
     "сандалии":            (1, False, "casual", "лето"),
     "каблуки":             (2, False, "business", "универсальная"),
     "шляпа":               (2, False, "casual", "лето"),
@@ -429,6 +448,7 @@ def warmup() -> None:
 
     logger.info("Прогрев моделей начался...")
     _get_siglip()
+    warmup_segmentation()
 
     dummy_img = Image.new("RGB", (384, 384), color=(128, 128, 128))
     dummy_bytes = BytesIO()
@@ -444,15 +464,15 @@ def warmup() -> None:
 # ---------- Главная функция ----------
 
 async def classify_clothing(image_bytes: bytes) -> dict:
-    """Распознать тип (SigLIP) и цвет (HSV).
+    """Распознать тип (SigLIP) и цвет (HSV), предварительно вырезав вещь."""
+    # 1. Сегментация: обрезаем по bbox вещи
+    cropped_bytes = crop_garment(image_bytes)
 
-    Материал и толщина определяются в диалоге с пользователем
-    (кнопками), а не моделью — для скорости.
-    """
-    color_primary, color_candidates = detect_color(image_bytes)
+    # 2. Цвет по обрезанному изображению
+    color_primary, color_candidates = detect_color(cropped_bytes)
 
     try:
-        image = Image.open(BytesIO(image_bytes)).convert("RGB")
+        image = Image.open(BytesIO(cropped_bytes)).convert("RGB")
     except Exception:
         logger.exception("Не удалось открыть изображение")
         return {
@@ -462,7 +482,7 @@ async def classify_clothing(image_bytes: bytes) -> dict:
         }
 
     try:
-        options = _classify_type_siglip(image, image_bytes)
+        options = _classify_type_siglip(image, cropped_bytes)
     except Exception:
         logger.exception("Ошибка SigLIP")
         return {
