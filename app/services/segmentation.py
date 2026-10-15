@@ -3,18 +3,18 @@
 Алгоритм:
   1. Модель выдаёт попиксельную маску классов.
   2. Оставляем только классы одежды (по id2label).
-  3. Применяем дилатацию, чтобы склеить близкие части (рукав + торс).
-  4. Разбиваем на связные компоненты, берём самую крупную.
+  3. Находим связные компоненты через BFS (без scipy).
+  4. Берём компоненту с наибольшей площадью.
   5. Обрезаем по её bbox с отступом.
 """
 
 import logging
+from collections import deque
 from io import BytesIO
 
 import numpy as np
 import torch
 from PIL import Image
-from scipy import ndimage
 from transformers import AutoImageProcessor, AutoModelForSemanticSegmentation
 
 logger = logging.getLogger(__name__)
@@ -25,16 +25,11 @@ _model = None
 _processor = None
 _garment_ids: set[int] | None = None
 
-# Минимальная доля кадра, которую должна занимать главная вещь.
-# Если меньше — считаем, что сегментация не справилась, и оставляем оригинал.
 MIN_GARMENT_AREA = 0.20
-
-# Радиус дилатации маски (в пикселях) — склеивает близкие части вещи.
 DILATION_RADIUS = 15
 
 
 def _garment_class_ids(model) -> set[int]:
-    """Определить id классов, соответствующих одежде, по id2label."""
     id2label = getattr(model.config, "id2label", {}) or {}
     garment_keywords = {
         "upper", "lower", "dress", "skirt", "pant", "trouser",
@@ -70,48 +65,78 @@ def _get_model():
     return _model, _processor, _garment_ids
 
 
+def _dilate_mask(mask: np.ndarray, radius: int) -> np.ndarray:
+    """Морфологическая дилатация без scipy — через np.roll."""
+    result = mask.copy()
+    step = max(1, radius // 3)
+    for dy in range(-radius, radius + 1, step):
+        for dx in range(-radius, radius + 1, step):
+            if dx == 0 and dy == 0:
+                continue
+            shifted = np.roll(np.roll(mask, dy, axis=0), dx, axis=1)
+            result |= shifted
+    return result
+
+
 def _largest_component_bbox(mask: np.ndarray) -> tuple[int, int, int, int] | None:
-    """Найти bbox самой крупной связной компоненты в бинарной маске.
+    """Найти bbox самой крупной связной компоненты через BFS (без scipy)."""
+    h, w = mask.shape
+    dilated = _dilate_mask(mask, DILATION_RADIUS)
 
-    Возвращает (y_min, x_min, y_max, x_max) или None.
-    """
-    # Дилатация — склеиваем близкие части (рукава + торс, юбка + топ).
-    structure = np.ones((DILATION_RADIUS, DILATION_RADIUS), dtype=bool)
-    dilated = ndimage.binary_dilation(mask, structure=structure)
+    visited = np.zeros_like(dilated, dtype=bool)
+    best_size = 0
+    best_bbox = None
 
-    # Метки связных компонент.
-    labeled, num_features = ndimage.label(dilated)
-    if num_features == 0:
+    for y0 in range(0, h, 4):
+        for x0 in range(0, w, 4):
+            if not dilated[y0, x0] or visited[y0, x0]:
+                continue
+
+            queue = deque([(y0, x0)])
+            visited[y0, x0] = True
+            size = 0
+            y_min, y_max = y0, y0
+            x_min, x_max = x0, x0
+
+            while queue:
+                y, x = queue.popleft()
+                size += 1
+                if y < y_min: y_min = y
+                if y > y_max: y_max = y
+                if x < x_min: x_min = x
+                if x > x_max: x_max = x
+
+                for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                    ny, nx = y + dy, x + dx
+                    if 0 <= ny < h and 0 <= nx < w:
+                        if dilated[ny, nx] and not visited[ny, nx]:
+                            visited[ny, nx] = True
+                            queue.append((ny, nx))
+
+            if size > best_size:
+                best_size = size
+                best_bbox = (y_min, x_min, y_max, x_max)
+
+    if best_bbox is None:
         return None
 
-    # Площадь каждой компоненты.
-    sizes = ndimage.sum(dilated, labeled, range(1, num_features + 1))
-    if len(sizes) == 0:
-        return None
-
-    # Индекс самой крупной (нумерация с 1).
-    largest_idx = int(np.argmax(sizes)) + 1
-    largest_mask = labeled == largest_idx
-
-    # Возвращаемся к исходной маске (без дилатации), чтобы bbox был точнее.
-    # Пересекаем крупную компоненту с оригинальной маской.
-    final_mask = largest_mask & mask
-    if not final_mask.any():
-        # Если пересечение пусто (редкий случай) — используем расширенную.
-        final_mask = largest_mask
-
-    ys, xs = np.where(final_mask)
+    # Уточняем bbox по оригинальной маске
+    y_min, x_min, y_max, x_max = best_bbox
+    sub_mask = mask[y_min:y_max + 1, x_min:x_max + 1]
+    ys, xs = np.where(sub_mask)
     if len(ys) == 0:
-        return None
+        return best_bbox
 
-    return int(ys.min()), int(xs.min()), int(ys.max()), int(xs.max())
+    return (
+        int(ys.min()) + y_min,
+        int(xs.min()) + x_min,
+        int(ys.max()) + y_min,
+        int(xs.max()) + x_min,
+    )
 
 
 def crop_garment(image_bytes: bytes) -> bytes:
-    """Найти главную вещь на фото и вернуть обрезанное изображение.
-
-    Если сегментация не справилась — возвращает оригинал.
-    """
+    """Найти главную вещь на фото и вернуть обрезанное изображение."""
     try:
         image = Image.open(BytesIO(image_bytes)).convert("RGB")
         original_size = image.size
@@ -145,7 +170,6 @@ def crop_garment(image_bytes: bytes) -> bytes:
 
         y_min, x_min, y_max, x_max = bbox
 
-        # Отступ 5% от размера bbox.
         pad_y = max(2, int((y_max - y_min) * 0.05))
         pad_x = max(2, int((x_max - x_min) * 0.05))
         y_min = max(0, y_min - pad_y)
@@ -159,7 +183,7 @@ def crop_garment(image_bytes: bytes) -> bytes:
 
         if area_ratio < MIN_GARMENT_AREA:
             logger.info(
-                "Сегментация: главная вещь занимает %.0f%% кадра, оригинал",
+                "Сегментация: главная вещь %.0f%% кадра, оригинал",
                 area_ratio * 100,
             )
             return image_bytes
@@ -180,7 +204,6 @@ def crop_garment(image_bytes: bytes) -> bytes:
 
 
 def warmup_segmentation() -> None:
-    """Прогреть сегментацию dummy-изображением."""
     dummy = Image.new("RGB", (384, 384), color=(200, 200, 200))
     buf = BytesIO()
     dummy.save(buf, format="JPEG")
