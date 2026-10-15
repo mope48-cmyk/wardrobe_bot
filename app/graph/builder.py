@@ -111,6 +111,12 @@ def route_condition(state: BotState) -> str:
     if step == "list_edit_input":
         return "list_edit_save"
 
+    if step == "awaiting_material":
+        return "add_material"
+
+    if step == "awaiting_material_text":
+        return "add_material_text"
+
     if step and step.startswith("awaiting_"):
         return "add_attribute"
 
@@ -156,6 +162,8 @@ def build_graph():
     builder.add_node("add_photo", nodes.add_photo_node)
     builder.add_node("add_confirm_category", nodes.add_confirm_category_node)
     builder.add_node("add_attribute", nodes.add_attribute_node)
+    builder.add_node("add_material", nodes.add_material_node)
+    builder.add_node("add_material_text", nodes.add_material_text_node)
 
     builder.add_edge(START, "router")
     builder.add_conditional_edges(
@@ -183,6 +191,8 @@ def build_graph():
             "add_photo": "add_photo",
             "add_confirm_category": "add_confirm_category",
             "add_attribute": "add_attribute",
+            "add_material": "add_material",
+            "add_material_text": "add_material_text",
         },
     )
 
@@ -194,6 +204,7 @@ def build_graph():
         "outfit_start", "outfit_location", "outfit_occasion",
         "add_start", "add_expect_photo", "add_photo",
         "add_confirm_category", "add_attribute",
+        "add_material", "add_material_text",
     ]
     for name in terminal_nodes:
         builder.add_edge(name, END)
