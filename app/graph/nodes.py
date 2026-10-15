@@ -137,6 +137,7 @@ async def _persist_item(state: BotState, draft: dict) -> dict:
                     "Готово! Сохранил вещь:\n"
                     f"• {draft['category']} / {draft['type']}\n"
                     f"• цвет: {draft['color']}\n"
+                    f"• материал: {draft.get('material') or '—'}\n"
                     f"• тепло: {draft['warmth_level']}/5\n"
                     f"• водонепроницаемая: {waterproof_str}\n"
                     f"• стиль: {draft['formal_level']}\n"
@@ -395,6 +396,7 @@ EDIT_FIELD_TO_DB = {
     "category": "category",
     "type": "type",
     "color": "color",
+    "material": "material",
     "warmth": "warmth_level",
     "waterproof": "waterproof",
     "formal": "formal_level",
@@ -406,6 +408,7 @@ EDIT_FIELD_LABEL = {
     "category": "Категория",
     "type": "Тип",
     "color": "Цвет",
+    "material": "Материал",
     "warmth": "Тепло (1–5)",
     "waterproof": "Водонепроницаемость (да/нет)",
     "formal": "Стиль (casual / business / sport)",
@@ -418,6 +421,14 @@ TEXT_EDIT_FIELDS = {"type", "color"}
 # Поля с фиксированными вариантами.
 # Формат: field → [(подпись на кнопке, код для callback, значение для БД), ...]
 CHOICE_EDIT_FIELDS: dict[str, list[tuple[str, str, object]]] = {
+    "material": [
+        ("Хлопок", "cotton", "хлопок"),
+        ("Шерсть", "wool", "шерсть"),
+        ("Кожа", "leather", "кожа"),
+        ("Деним", "denim", "деним"),
+        ("Трикотаж", "knit", "трикотаж"),
+        ("Синтетика", "synthetic", "синтетика"),
+    ],
     "category": [
         ("Верх", "top", "верх"),
         ("Низ", "bottom", "низ"),
@@ -470,6 +481,14 @@ def _validate_edit_field(
         if len(text) >= 2:
             return True, text, ""
         return False, None, "Напишите цвет текстом."
+
+    if field == "material":
+        if lower in VALID_MATERIALS:
+            return True, lower, ""
+        # Разрешаем и свободный ввод (лён, кашемир, вискоза и т.д.)
+        if len(text) >= 2:
+            return True, text, ""
+        return False, None, "Напишите материал текстом."
 
     if field == "warmth":
         try:
@@ -532,6 +551,7 @@ async def list_edit_node(state: BotState) -> dict:
         "✏️ <b>Редактирование вещи</b>\n\n"
         f"{item.category} / {item.type}\n"
         f"цвет: {item.color}\n"
+        f"материал: {item.material or '—'}\n"
         f"тепло: {item.warmth_level}/5\n"
         f"водонепроницаемая: {'да' if item.waterproof else 'нет'}\n"
         f"стиль: {item.formal_level}\n"
@@ -546,9 +566,10 @@ async def list_edit_node(state: BotState) -> dict:
         ],
         [
             {"text": "Цвет", "callback_data": "list:edit:color"},
-            {"text": "Тепло", "callback_data": "list:edit:warmth"},
+            {"text": "Материал", "callback_data": "list:edit:material"},
         ],
         [
+            {"text": "Тепло", "callback_data": "list:edit:warmth"},
             {"text": "Водонепроницаемость", "callback_data": "list:edit:waterproof"},
         ],
         [
