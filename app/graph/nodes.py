@@ -1286,12 +1286,19 @@ async def add_attribute_node(state: BotState) -> dict:
 
 
 async def add_material_node(state: BotState) -> dict:
-    """Обработка выбора материала кнопкой."""
-    text = (state.get("input_text") or "").strip().lower()
+    """Обработка выбора материала.
+
+    Принимает:
+      - нажатие кнопки из VALID_MATERIALS (хлопок, шерсть, ...);
+      - нажатие «Другое» → переход в режим текстового ввода;
+      - сразу текст (вельвет, лён, кашемир) — тоже сохраняется.
+    """
+    text = (state.get("input_text") or "").strip()
+    lower = text.lower()
     draft = dict(state.get("draft_item") or {})
 
-    # «Другое» — текстовый ввод
-    if text == "другое":
+    # «Другое» — переход в текстовый ввод (с подсказкой)
+    if lower == "другое":
         return {
             "messages": [
                 AIMessage(
@@ -1302,19 +1309,28 @@ async def add_material_node(state: BotState) -> dict:
             "draft_item": draft,
         }
 
-    valid, value, error = _validate_answer("awaiting_material", text)
-    if not valid:
-        return {
-            "messages": [
-                AIMessage(
-                    content=error,
-                    additional_kwargs=_kb_for_step("awaiting_material"),
-                )
-            ]
-        }
+    # Кнопка из списка
+    if lower in VALID_MATERIALS:
+        draft["material"] = lower
+        return await _persist_item(state, draft)
 
-    draft["material"] = value
-    return await _persist_item(state, draft)
+    # Свободный текст — принимаем как материал
+    if len(text) >= 2:
+        draft["material"] = text
+        return await _persist_item(state, draft)
+
+    # Слишком коротко — просим ещё раз
+    return {
+        "messages": [
+            AIMessage(
+                content=(
+                    "Выберите материал кнопкой или напишите его текстом "
+                    "(например: лён, кашемир):"
+                ),
+                additional_kwargs=_kb_for_step("awaiting_material"),
+            )
+        ]
+    }
 
 
 async def add_material_text_node(state: BotState) -> dict:
