@@ -111,6 +111,11 @@ def route_condition(state: BotState) -> str:
     if step == "list_edit_input":
         return "list_edit_save"
 
+    # На шаге выбора через кнопки — если пришёл текст (не callback),
+    # обрабатываем как свободный ввод через list_edit_save.
+    if step == "list_edit_choice" and not text.startswith("list:set:"):
+        return "list_edit_save"
+
     if step == "awaiting_material":
         return "add_material"
 

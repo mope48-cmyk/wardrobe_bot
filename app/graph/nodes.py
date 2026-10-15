@@ -653,10 +653,15 @@ async def list_edit_field_node(state: BotState) -> dict:
             rows.append(row)
         rows.append([{"text": "❌ Отмена", "callback_data": "list:edit:cancel"}])
 
+        if field == "material":
+            hint = "Выберите кнопкой или напишите текстом (например: лён, кашемир):"
+        else:
+            hint = "Выберите новое значение:"
+
         caption = (
             f"✏️ <b>{label}</b>\n\n"
             f"Текущее значение: <b>{current_str}</b>\n\n"
-            "Выберите новое значение:"
+            f"{hint}"
         )
         next_step = "list_edit_choice"
     else:
