@@ -1,4 +1,12 @@
-"""Сегментация одежды — вырезает вещь из фона через SegFormer."""
+"""Сегментация одежды — вырезает главную вещь из фона через SegFormer.
+
+Алгоритм:
+  1. Модель выдаёт попиксельную маску классов.
+  2. Оставляем только классы одежды (по id2label).
+  3. Применяем дилатацию, чтобы склеить близкие части (рукав + торс).
+  4. Разбиваем на связные компоненты, берём самую крупную.
+  5. Обрезаем по её bbox с отступом.
+"""
 
 import logging
 from io import BytesIO
@@ -6,6 +14,7 @@ from io import BytesIO
 import numpy as np
 import torch
 from PIL import Image
+from scipy import ndimage
 from transformers import AutoImageProcessor, AutoModelForSemanticSegmentation
 
 logger = logging.getLogger(__name__)
@@ -16,13 +25,16 @@ _model = None
 _processor = None
 _garment_ids: set[int] | None = None
 
+# Минимальная доля кадра, которую должна занимать главная вещь.
+# Если меньше — считаем, что сегментация не справилась, и оставляем оригинал.
+MIN_GARMENT_AREA = 0.20
+
+# Радиус дилатации маски (в пикселях) — склеивает близкие части вещи.
+DILATION_RADIUS = 15
+
 
 def _garment_class_ids(model) -> set[int]:
-    """Определить id классов, соответствующих одежде, по id2label.
-
-    Так код не зависит от конкретных id в модели — если модель обновят
-    и переназначат классы, мы всё равно найдём нужные.
-    """
+    """Определить id классов, соответствующих одежде, по id2label."""
     id2label = getattr(model.config, "id2label", {}) or {}
     garment_keywords = {
         "upper", "lower", "dress", "skirt", "pant", "trouser",
@@ -58,11 +70,47 @@ def _get_model():
     return _model, _processor, _garment_ids
 
 
-def crop_garment(image_bytes: bytes) -> bytes:
-    """Найти вещь на фото и вернуть обрезанное изображение по bbox.
+def _largest_component_bbox(mask: np.ndarray) -> tuple[int, int, int, int] | None:
+    """Найти bbox самой крупной связной компоненты в бинарной маске.
 
-    Если сегментация находит слишком маленькую область (<30% площади) —
-    возвращает исходное изображение. Если модель падает — тоже исходное.
+    Возвращает (y_min, x_min, y_max, x_max) или None.
+    """
+    # Дилатация — склеиваем близкие части (рукава + торс, юбка + топ).
+    structure = np.ones((DILATION_RADIUS, DILATION_RADIUS), dtype=bool)
+    dilated = ndimage.binary_dilation(mask, structure=structure)
+
+    # Метки связных компонент.
+    labeled, num_features = ndimage.label(dilated)
+    if num_features == 0:
+        return None
+
+    # Площадь каждой компоненты.
+    sizes = ndimage.sum(dilated, labeled, range(1, num_features + 1))
+    if len(sizes) == 0:
+        return None
+
+    # Индекс самой крупной (нумерация с 1).
+    largest_idx = int(np.argmax(sizes)) + 1
+    largest_mask = labeled == largest_idx
+
+    # Возвращаемся к исходной маске (без дилатации), чтобы bbox был точнее.
+    # Пересекаем крупную компоненту с оригинальной маской.
+    final_mask = largest_mask & mask
+    if not final_mask.any():
+        # Если пересечение пусто (редкий случай) — используем расширенную.
+        final_mask = largest_mask
+
+    ys, xs = np.where(final_mask)
+    if len(ys) == 0:
+        return None
+
+    return int(ys.min()), int(xs.min()), int(ys.max()), int(xs.max())
+
+
+def crop_garment(image_bytes: bytes) -> bytes:
+    """Найти главную вещь на фото и вернуть обрезанное изображение.
+
+    Если сегментация не справилась — возвращает оригинал.
     """
     try:
         image = Image.open(BytesIO(image_bytes)).convert("RGB")
@@ -86,15 +134,18 @@ def crop_garment(image_bytes: bytes) -> bytes:
             mask = logits.argmax(dim=1)[0].cpu().numpy()
 
         garment_mask = np.isin(mask, list(garment_ids))
-        ys, xs = np.where(garment_mask)
-        if len(ys) == 0:
+        if not garment_mask.any():
             logger.info("Сегментация: вещь не найдена, оставляю оригинал")
             return image_bytes
 
-        y_min, y_max = int(ys.min()), int(ys.max())
-        x_min, x_max = int(xs.min()), int(xs.max())
+        bbox = _largest_component_bbox(garment_mask)
+        if bbox is None:
+            logger.info("Сегментация: не удалось выделить компоненту, оригинал")
+            return image_bytes
 
-        # Отступ 5% по каждой стороне
+        y_min, x_min, y_max, x_max = bbox
+
+        # Отступ 5% от размера bbox.
         pad_y = max(2, int((y_max - y_min) * 0.05))
         pad_x = max(2, int((x_max - x_min) * 0.05))
         y_min = max(0, y_min - pad_y)
@@ -104,10 +155,12 @@ def crop_garment(image_bytes: bytes) -> bytes:
 
         crop_w = x_max - x_min
         crop_h = y_max - y_min
-        if crop_w * crop_h < 0.30 * w * h:
+        area_ratio = (crop_w * crop_h) / (w * h)
+
+        if area_ratio < MIN_GARMENT_AREA:
             logger.info(
-                "Сегментация: обрезка слишком агрессивная (%sx%s), оставляю оригинал",
-                crop_w, crop_h,
+                "Сегментация: главная вещь занимает %.0f%% кадра, оригинал",
+                area_ratio * 100,
             )
             return image_bytes
 
@@ -115,7 +168,10 @@ def crop_garment(image_bytes: bytes) -> bytes:
         buf = BytesIO()
         cropped.save(buf, format="JPEG", quality=92)
 
-        logger.info("Сегментация: %s → %s", original_size, cropped.size)
+        logger.info(
+            "Сегментация: %s → %s (главная вещь %.0f%% кадра)",
+            original_size, cropped.size, area_ratio * 100,
+        )
         return buf.getvalue()
 
     except Exception:
