@@ -395,6 +395,7 @@ async def _render_current(state: BotState, edit_mode: str = "media") -> dict:
         "list_index": index,
         "list_source": state.get("list_source") or "list",
         "edit_message_id": edit_message_id,
+        "show_original": show_original,
     }
 
 
@@ -1062,11 +1063,15 @@ async def list_delete_cancel_node(state: BotState) -> dict:
 
 
 async def list_toggle_photo_node(state: BotState) -> dict:
-    """Переключить: оригинал ↔ товарное фото."""
+    """Переключить: оригинал ↔ фото каталога.
+
+    edit_mode="media" — чтобы edit_message_media заменил фото,
+    а не только caption.
+    """
     current = bool(state.get("show_original") or False)
     return await _render_current(
         {**state, "show_original": not current},
-        edit_mode="caption",
+        edit_mode="media",
     )
 
 
