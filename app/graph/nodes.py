@@ -418,6 +418,7 @@ async def list_node(state: BotState) -> dict:
             "step": None, "intent": None,
             "list_ids": None, "list_index": 0,
             "edit_message_id": None,
+            "show_original": False,
         }
 
     ids = [item.id for item in items]
@@ -426,23 +427,29 @@ async def list_node(state: BotState) -> dict:
         "list_ids": ids,
         "list_index": 0,
         "list_source": "list",
-        "edit_message_id": None,  # первое сообщение — новое
+        "edit_message_id": None,
+        "show_original": False,
     })
 
 
 async def list_prev_node(state: BotState) -> dict:
-    """Перейти к предыдущей вещи."""
+    """Перейти к предыдущей вещи. Сброс show_original."""
     index = state.get("list_index") or 0
-    return await _render_current({**state, "list_index": max(0, index - 1)})
+    return await _render_current({
+        **state,
+        "list_index": max(0, index - 1),
+        "show_original": False,
+    })
 
 
 async def list_next_node(state: BotState) -> dict:
-    """Перейти к следующей вещи."""
+    """Перейти к следующей вещи. Сброс show_original."""
     ids = state.get("list_ids") or []
     index = state.get("list_index") or 0
     return await _render_current({
         **state,
         "list_index": min(len(ids) - 1, index + 1),
+        "show_original": False,
     })
 
 
@@ -1051,6 +1058,7 @@ async def list_delete_do_node(state: BotState) -> dict:
         "list_ids": new_ids,
         "list_index": new_index,
         "edit_message_id": edit_message_id,
+        "show_original": False,
     })
 
 
@@ -1103,7 +1111,7 @@ async def list_delete_product_photo_node(state: BotState) -> dict:
         }
 
     return await _render_current(
-        {**state, "show_original": True},
+        {**state, "show_original": False},
         edit_mode="caption",
     )
 
