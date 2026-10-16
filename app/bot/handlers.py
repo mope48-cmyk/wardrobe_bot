@@ -339,7 +339,6 @@ async def handle_callback(callback: CallbackQuery) -> None:
     for ai_msg in new_ai_messages:
         await _send_ai_message(callback.message, ai_msg)
 
-        # Если узел попросил запустить фоновую генерацию — запускаем
         extra = getattr(ai_msg, "additional_kwargs", None) or {}
         cfg = extra.get("start_product_photo")
         if cfg:
@@ -347,11 +346,5 @@ async def handle_callback(callback: CallbackQuery) -> None:
                 bot=callback.bot,
                 chat_id=callback.message.chat.id,
                 card_message_id=callback.message.message_id,
-                item_id=cfg["item_id"],
-                user_id=cfg["user_id"],
-                photo_file_id=cfg["photo_file_id"],
-                category=cfg["category"],
-                item_type=cfg["item_type"],
-                card_index=cfg["card_index"],
-                card_total=cfg["card_total"],
+                **cfg,
             ))

@@ -16,6 +16,11 @@ from app.db.repository import (
 )
 from app.graph.state import BotState
 from app.services.outfit import select_outfit
+from app.services.product_photo_bg import (
+    is_generating,
+    mark_generating,
+    set_current_card,
+)
 from app.services.vision import classify_clothing
 from app.services.weather import geocode_city, get_weather
 
@@ -252,12 +257,17 @@ def _list_keyboard(
     total: int,
     has_generated: bool,
     show_original: bool,
+    is_gen_now: bool,
 ) -> list[list[dict]]:
     """Inline-клавиатура карточки вещи."""
     prev_cb = "list:prev" if index > 0 else "list:noop:first"
     next_cb = "list:next" if index < total - 1 else "list:noop:last"
 
-    if has_generated:
+    if is_gen_now:
+        row2 = [
+            {"text": "⏳ Готовится…", "callback_data": "list:noop_generating"},
+        ]
+    elif has_generated:
         toggle_text = (
             "📷 Оригинал" if not show_original else "📸 Фото каталога"
         )
@@ -347,10 +357,19 @@ async def _render_current(state: BotState, edit_mode: str = "media") -> dict:
 
     show_original = bool(state.get("show_original") or False)
     has_generated = bool(item.generated_photo_file_id)
+    is_gen = is_generating(item.id)
 
-    if has_generated and not show_original:
+    # Запоминаем текущую вещь — нужно для фоновой задачи
+    chat_id = state.get("chat_id")
+    if chat_id:
+        set_current_card(chat_id, item.id)
+
+    if is_gen:
+        photo_to_show = item.photo_file_id
+        mode_mark = "\n\n⏳ <i>Готовится фото для каталога…</i>"
+    elif has_generated and not show_original:
         photo_to_show = item.generated_photo_file_id
-        mode_mark = "\n📸 <i>товарное фото</i>"
+        mode_mark = "\n📸 <i>фото из каталога</i>"
     else:
         photo_to_show = item.photo_file_id
         mode_mark = ""
@@ -360,7 +379,9 @@ async def _render_current(state: BotState, edit_mode: str = "media") -> dict:
 
     additional: dict = {
         "photo_file_id": photo_to_show,
-        "inline_keyboard": _list_keyboard(index, total, has_generated, show_original),
+        "inline_keyboard": _list_keyboard(
+            index, total, has_generated, show_original, is_gen
+        ),
         "edit_mode": edit_mode,
     }
     if edit_message_id is not None:
@@ -1076,7 +1097,6 @@ async def list_delete_product_photo_node(state: BotState) -> dict:
             "step": None, "intent": None,
         }
 
-    # Возвращаемся к карточке с оригиналом
     return await _render_current(
         {**state, "show_original": True},
         edit_mode="caption",
@@ -1084,14 +1104,12 @@ async def list_delete_product_photo_node(state: BotState) -> dict:
 
 
 async def list_make_product_photo_node(state: BotState) -> dict:
-    """Показать карточку в состоянии «⏳ Готовится…».
+    """Поставить задачу на генерацию и показать карточку со статусом.
 
-    Реальная генерация запускается в handlers после graph.ainvoke —
-    фоновая задача, чтобы не блокировать другие сообщения.
+    Реальная генерация запускается в handlers как asyncio-задача.
     """
     ids = state.get("list_ids") or []
     index = state.get("list_index") or 0
-    edit_message_id = state.get("edit_message_id")
 
     if not ids or index >= len(ids):
         return {
@@ -1106,24 +1124,19 @@ async def list_make_product_photo_node(state: BotState) -> dict:
             "step": None, "intent": None,
         }
 
-    colors_str = ", ".join(get_colors(item)) or "—"
-    material_line = f"материал: {item.material}\n" if item.material else ""
-    waterproof_mark = "💧 " if item.waterproof else ""
+    # Если уже генерируется — просто перерисовываем карточку
+    if is_generating(item.id):
+        return await _render_current(state, edit_mode="caption")
 
-    caption = (
-        f"📋 Вещь <b>{index + 1}</b> из <b>{len(ids)}</b>\n\n"
-        f"<b>{item.category} / {item.type}</b>\n"
-        f"цвета: {colors_str}\n"
-        f"{material_line}"
-        f"{waterproof_mark}тепло: {item.warmth_level}/5, "
-        f"стиль: {item.formal_level}, сезон: {item.season}\n\n"
-        f"⏳ <i>Готовится фото для каталога…</i>"
-    )
+    # Помечаем сразу, чтобы рендер карточки увидел статус
+    mark_generating(item.id)
 
-    additional: dict = {
-        "photo_file_id": item.photo_file_id,
-        "edit_mode": "caption",
-        "start_product_photo": {
+    result = await _render_current(state, edit_mode="caption")
+
+    # Добавляем маркер — handlers запустит фоновую задачу
+    if result["messages"]:
+        extra = dict(result["messages"][0].additional_kwargs or {})
+        extra["start_product_photo"] = {
             "item_id": item.id,
             "user_id": state["user_id"],
             "photo_file_id": item.photo_file_id,
@@ -1131,22 +1144,10 @@ async def list_make_product_photo_node(state: BotState) -> dict:
             "item_type": item.type,
             "card_index": index,
             "card_total": len(ids),
-        },
-    }
-    if edit_message_id is not None:
-        additional["edit_message_id"] = edit_message_id
+        }
+        result["messages"][0].additional_kwargs = extra
 
-    return {
-        "messages": [
-            AIMessage(content=caption, additional_kwargs=additional)
-        ],
-        "step": "list_view",
-        "intent": "list",
-        "list_ids": ids,
-        "list_index": index,
-        "edit_message_id": edit_message_id,
-        "show_original": True,
-    }
+    return result
 
 
 # ---------- /add ----------
