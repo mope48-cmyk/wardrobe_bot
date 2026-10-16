@@ -19,6 +19,8 @@ RUN pip install \
 RUN pip install \
     --index-url https://mirrors.aliyun.com/pypi/simple/ \
     --trusted-host mirrors.aliyun.com \
+    --timeout 120 \
+    --retries 10 \
     -r requirements.txt
 
 # 3. Каталоги под БД и кэш модели
