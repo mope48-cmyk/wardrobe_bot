@@ -1,0 +1,27 @@
+https://upload.wikimedia.org/wikipedia/commons/4/4a/White_tshirt.png
+# 404 | content-type=text/html; charset=UTF-8, body_len=83
+
+https://upload.wikimedia.org/wikipedia/commons/b/b2/T-Shirt_Wikipedia_black.jpg
+# 404 | content-type=text/html; charset=UTF-8, body_len=94
+
+https://upload.wikimedia.org/wikipedia/commons/3/3c/Denimjeans2.JPG
+# 404 | content-type=text/html; charset=UTF-8, body_len=82
+
+https://upload.wikimedia.org/wikipedia/commons/5/5e/Wisent_Blue_Jeans_%282%29.jpg
+# 404 | content-type=text/html; charset=UTF-8, body_len=96
+
+https://upload.wikimedia.org/wikipedia/commons/7/7c/All_white_Adidas_NMD_R1.jpg
+# 404 | content-type=text/html; charset=UTF-8, body_len=94
+
+https://upload.wikimedia.org/wikipedia/commons/5/5a/A_pair_of_Vans_shoes.JPG
+# 404 | content-type=text/html; charset=UTF-8, body_len=91
+
+https://upload.wikimedia.org/wikipedia/commons/1/1c/Grey_February_Baby_Sweater.jpg
+# 404 | content-type=text/html; charset=UTF-8, body_len=97
+
+https://upload.wikimedia.org/wikipedia/commons/7/7e/Cardigan%2C_sweater.JPG
+# 404 | content-type=text/html; charset=UTF-8, body_len=90
+
+https://upload.wikimedia.org/wikipedia/commons/8/8e/White_jacket.jpg
+# 404 | content-type=text/html; charset=UTF-8, body_len=83
+

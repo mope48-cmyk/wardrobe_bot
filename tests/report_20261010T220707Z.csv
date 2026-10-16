@@ -1,0 +1,106 @@
+image,bytes_sent,reply_received,reply_text,elapsed_s,cancel_ok,error
+01_Верх_футболка_белый_хлопок_базовый_светлая_вещь.png,7038,False,,4.001,False,"HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+02_Верх_футболка_чёрный_хлопок_базовый_чёрный.jpg,78303,False,,4.555,False,"HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+03_Верх_футболка_красный_хлопок_насыщенный_цвет.jpg,48574,False,,4.757,False,"HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+04_Верх_рубашка_разноцветный_хлопок_тип_рубашка.jpg,116657,False,,4.364,False,"HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+05_Верх_рубашка_не_нормирован_не_нормирован_форма_рубашки.jpg,265798,False,,4.684,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+06_Верх_рубашка_не_нормирован_не_нормирован_другой_фасон_рубашки.jpg,2724710,False,,5.741,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+07_Верх_свитер_не_нормирован_кашемир_материал_шерсть_кашемир.jpg,836151,False,,4.915,False,"HTTPStatusError: Server error '502 Bad Gateway' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502"
+08_Верх_свитер_не_нормирован_шерсть_вязка_материал.jpg,257663,False,,4.404,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+09_Верх_свитер_жёлтый_не_нормирован_яркий_цвет.jpg,69857,False,,4.522,False,"HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+10_Верх_толстовка_не_нормирован_трикотаж_тип_sweatshirt.jpg,2001744,False,,5.385,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+12_Верх_толстовка_серый_трикотаж_светлый_нейтральный.jpg,4783835,False,,6.549,False,"HTTPStatusError: Server error '502 Bad Gateway' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502"
+13_Верх_куртка_чёрный_кожа_кожа_чёрный.jpg,9332390,False,,7.232,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+14_Верх_куртка_коричневый_кожа_кожа_коричневый.jpg,392958,False,,4.516,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+15_Верх_куртка_оливковый_синтетика-ткань_оливковый_vs_хаки.jpg,347115,False,,4.649,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+16_Верх_пальто_нейтральный_не_нормирован_тип_outerwear.jpg,89674,False,,4.536,False,"HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+17_Верх_пальто_не_нормирован_шерсть_шерстяное_пальто.jpg,1166720,False,,4.398,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+18_Верх_пальто_бежевый_ткань_бежевый_пальто.jpg,1142268,False,,5.084,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+19_Верх_платье_красный_не_нормирован_базовый_красный.jpg,202847,False,,4.629,False,"HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+20_Верх_платье_чёрный_не_нормирован_глубокий_чёрный.jpg,244780,False,,4.739,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+21_Верх_платье_фиолетовый_не_нормирован_фиолетовый.jpg,5063168,False,,5.666,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+22_Низ_джинсы_синий_деним_базовый_denim.jpg,100403,False,,4.304,False,"HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+23_Низ_джинсы_синий_деним_текстура_денима.jpg,1379399,False,,5.214,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+24_Низ_джинсы_синий_деним_другая_фактура.jpg,6290260,False,,5.064,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+25_Низ_брюки_коричневый_вельвет_вельвет_коричневый.jpg,2039839,False,,3.563,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+26_Низ_брюки_не_нормирован_лён_материал_лён.jpg,309583,False,,4.773,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+27_Низ_брюки_не_нормирован_хлопок_материал_хлопок.jpg,280095,False,,4.763,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+28_Низ_шорты_деним_деним_тип_denim.jpg,161271,False,,4.634,False,"HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+29_Низ_шорты_не_нормирован_не_нормирован_тип_шорты.jpg,62155,False,,4.544,False,"HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+31_Низ_юбка_синий-индиго_лён_цвет_материал.jpg,19689503,False,,0.0,False,skipped (>10MB)
+32_Низ_юбка_не_нормирован_хлопок_материал_хлопок.jpg,2762049,False,,4.252,False,"HTTPStatusError: Server error '502 Bad Gateway' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502"
+33_Низ_юбка_не_нормирован_шёлк_материал_шёлк.jpg,1459257,False,,5.14,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+34_Низ_спортивные_штаны_не_нормирован_трикотаж_тип_sportswear.jpg,266584,False,,4.179,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+35_Низ_спортивные_штаны_не_нормирован_синтетика_спортивная_ткань.jpg,197891,False,,4.357,False,"HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+36_Низ_спортивные_штаны_не_нормирован_синтетика_другой_спортивный_вариант.jpg,406988,False,,4.098,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+37_Обувь_кроссовки_не_нормирован_текстиль-кожа_базовый_sneaker.jpg,2294106,False,,5.476,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+38_Обувь_кроссовки_красный_не_нормирован_цветовой_тест.jpg,7662191,False,,6.33,False,"HTTPStatusError: Server error '502 Bad Gateway' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502"
+39_Обувь_кроссовки_белый_не_нормирован_светлая_обувь.jpg,1755690,False,,5.306,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+40_Обувь_ботинки_чёрный-коричневый_кожа_кожа_обувь.jpg,6112653,False,,5.956,False,"HTTPStatusError: Server error '502 Bad Gateway' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502"
+41_Обувь_ботинки_чёрный-коричневый_кожа_второй_вариант.jpg,4871143,False,,6.58,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+42_Обувь_ботинки_коричневый_кожа_коричневая_кожа.jpg,3008959,False,,5.497,False,"HTTPStatusError: Server error '502 Bad Gateway' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502"
+43_Обувь_туфли_чёрный-коричневый_кожа_тип_кожа.jpg,725854,False,,4.939,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+47_Обувь_сандалии_не_нормирован_кожа_другой_вариант.jpg,41426,False,,4.162,False,"HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+48_Обувь_сандалии_не_нормирован_шёлк-кожа_материал-комбинация.jpg,36393,False,,4.437,False,"HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+49_Аксессуары_шапка_соломенный-нейтр._солома_материал_головной_убор.jpg,5732119,False,,6.794,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+50_Аксессуары_шапка_не_нормирован_солома-ткань_другой_тип.jpg,1737615,False,,5.402,False,"HTTPStatusError: Server error '502 Bad Gateway' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502"
+52_Аксессуары_шарф_не_нормирован_текстиль_тип_материал.jpg,506978,False,,4.759,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+53_Аксессуары_шарф_не_нормирован_хлопок-лён_материал.jpg,344704,False,,4.627,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+54_Аксессуары_сумка_оливковый-коричневый_кожа_цвет_кожа.jpg,19936104,False,,0.0,False,skipped (>10MB)
+55_Аксессуары_сумка_фиолетовый_бархат_цвет_фактура.jpg,23952013,False,,0.0,False,skipped (>10MB)
+56_Аксессуары_сумка_белый_шёлк_материал_светлый_цвет.jpg,8730693,False,,5.791,False,"HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+57_Аксессуары_ремень_чёрный_кожа_чёрная_кожа.jpg,229582,False,,3.165,False,"HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+58_Аксессуары_ремень_коричневый_кожа_коричневая_кожа.jpg,94499,False,,4.745,False,"HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+59_Аксессуары_ремень_не_нормирован_кожа_дополнительный_leather-кейс.jpg,6869760,False,,6.814,False,"HTTPStatusError: Server error '502 Bad Gateway' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502"
+60_Верх_водолазка_не_нормирован_трикотаж_отдельная_проверка_типа.jpg,148669,False,,4.658,False,"HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"

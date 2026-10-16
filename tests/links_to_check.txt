@@ -1,0 +1,49 @@
+# links_to_check — 38 фото (нумерация с 41)
+# Формат: имя_файла | URL
+# Строки, начинающиеся с '#', игнорируются.
+
+# ---------- ВЕРХ ----------
+41_Верх_футболка_белый_на_белом.jpeg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/1926bd3287ad.jpeg
+42_Верх_футболка_чёрный_на_человеке.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/294fe720a0e7.jpg
+43_Верх_футболка_жёлтый_на_белом.png | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/50cc3674b4b4.png
+44_Верх_рубашка_синий_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/72d299f33f72.jpg
+45_Верх_рубашка_белый_на_кровати.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/7d805b69223a.jpg
+46_Верх_свитер_серый_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/26cae1d46892.jpg
+47_Верх_свитер_красный_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/4123028adc9d.jpg
+48_Верх_толстовка_серый_на_полу.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/069133ee3963.jpg
+49_Верх_куртка_чёрный_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/1054f19150dd.jpg
+50_Верх_куртка_оливковый_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/5e4215165fef.jpg
+51_Верх_пальто_бежевый_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/db4d1bd53763.jpg
+52_Верх_водолазка_чёрный_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/0998a35c16a3.jpg
+53_Верх_футболка_зелёный_на_белом.webp | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/89c7ed2aa196.webp
+54_Верх_куртка_коричневый_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/58e35f31e71b.jpg
+
+# ---------- НИЗ ----------
+55_Низ_джинсы_синий_на_полу.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/24c8f1d91cc9.jpg
+56_Низ_джинсы_серый_на_белом.webp | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/bbe7290e3d6e.webp
+57_Низ_брюки_бежевый_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/cf1df1220c97.jpg
+58_Низ_шорты_коричневый_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/8965e92c78e6.jpg
+59_Низ_юбка_красный_на_белом.webp | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/1e9d58cfd9fa.webp
+60_Низ_спортивные_штаны_серый_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/9ae2d868e861.jpg
+61_Низ_юбка_зелёный_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/b66230a66fd1.jpg
+
+# ---------- ОБУВЬ ----------
+62_Обувь_кроссовки_белый_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/a37d8f021bea.jpg
+63_Обувь_кроссовки_чёрный_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/8d13e0e01733.jpg
+64_Обувь_ботинки_коричневый_на_полу.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/94d92a2a7726.jpg
+65_Обувь_ботинки_чёрный_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/49c602c802e9.jpg
+66_Обувь_туфли_чёрный_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/68bb02f72832.jpg
+67_Обувь_сандалии_коричневый_на_полу.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/72579fda5058.jpg
+68_Обувь_туфли_белый_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/3ff6f07d1bf7.jpg
+69_Обувь_кроссовки_красный_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/7652957b808f.jpg
+
+# ---------- АКСЕССУАРЫ ----------
+70_Аксессуары_шапка_серый_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/d7b2f9651a4c.jpg
+71_Аксессуары_шарф_красный_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/03a9b78c3672.jpg
+72_Аксессуары_сумка_чёрный_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/79302e44728f.jpg
+73_Аксессуары_сумка_коричневый_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/77e5b3c12bd8.jpg
+74_Аксессуары_ремень_чёрный_на_столе.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/0f21fec297d4.jpg
+75_Аксессуары_ремень_коричневый_на_белом.png | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/b0c4f21916cd.png
+76_Аксессуары_шапка_жёлтый_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/1b2fff01fa01.jpg
+77_Аксессуары_сумка_бежевый_на_белом.png | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/38e8c0e8db1a.png
+78_Аксессуары_шапка_оливковый_на_белом.jpg | https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/12967e9ee88e.jpg

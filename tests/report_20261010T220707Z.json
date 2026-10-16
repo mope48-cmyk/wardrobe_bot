@@ -1,0 +1,496 @@
+{
+  "bot_username": "MyWordroobBot",
+  "archive": "C:\\Users\\User\\Desktop\\Гардероб\\clothes_images.zip",
+  "started_at": "2026-10-10T22:02:52.493054+00:00",
+  "total": 54,
+  "replied": 0,
+  "results": [
+    {
+      "image": "01_Верх_футболка_белый_хлопок_базовый_светлая_вещь.png",
+      "bytes_sent": 7038,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.001,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+    },
+    {
+      "image": "02_Верх_футболка_чёрный_хлопок_базовый_чёрный.jpg",
+      "bytes_sent": 78303,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.555,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+    },
+    {
+      "image": "03_Верх_футболка_красный_хлопок_насыщенный_цвет.jpg",
+      "bytes_sent": 48574,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.757,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+    },
+    {
+      "image": "04_Верх_рубашка_разноцветный_хлопок_тип_рубашка.jpg",
+      "bytes_sent": 116657,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.364,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+    },
+    {
+      "image": "05_Верх_рубашка_не_нормирован_не_нормирован_форма_рубашки.jpg",
+      "bytes_sent": 265798,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.684,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "06_Верх_рубашка_не_нормирован_не_нормирован_другой_фасон_рубашки.jpg",
+      "bytes_sent": 2724710,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 5.741,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "07_Верх_свитер_не_нормирован_кашемир_материал_шерсть_кашемир.jpg",
+      "bytes_sent": 836151,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.915,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Server error '502 Bad Gateway' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502"
+    },
+    {
+      "image": "08_Верх_свитер_не_нормирован_шерсть_вязка_материал.jpg",
+      "bytes_sent": 257663,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.404,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "09_Верх_свитер_жёлтый_не_нормирован_яркий_цвет.jpg",
+      "bytes_sent": 69857,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.522,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+    },
+    {
+      "image": "10_Верх_толстовка_не_нормирован_трикотаж_тип_sweatshirt.jpg",
+      "bytes_sent": 2001744,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 5.385,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "12_Верх_толстовка_серый_трикотаж_светлый_нейтральный.jpg",
+      "bytes_sent": 4783835,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 6.549,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Server error '502 Bad Gateway' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502"
+    },
+    {
+      "image": "13_Верх_куртка_чёрный_кожа_кожа_чёрный.jpg",
+      "bytes_sent": 9332390,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 7.232,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "14_Верх_куртка_коричневый_кожа_кожа_коричневый.jpg",
+      "bytes_sent": 392958,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.516,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "15_Верх_куртка_оливковый_синтетика-ткань_оливковый_vs_хаки.jpg",
+      "bytes_sent": 347115,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.649,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "16_Верх_пальто_нейтральный_не_нормирован_тип_outerwear.jpg",
+      "bytes_sent": 89674,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.536,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+    },
+    {
+      "image": "17_Верх_пальто_не_нормирован_шерсть_шерстяное_пальто.jpg",
+      "bytes_sent": 1166720,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.398,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "18_Верх_пальто_бежевый_ткань_бежевый_пальто.jpg",
+      "bytes_sent": 1142268,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 5.084,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "19_Верх_платье_красный_не_нормирован_базовый_красный.jpg",
+      "bytes_sent": 202847,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.629,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+    },
+    {
+      "image": "20_Верх_платье_чёрный_не_нормирован_глубокий_чёрный.jpg",
+      "bytes_sent": 244780,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.739,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "21_Верх_платье_фиолетовый_не_нормирован_фиолетовый.jpg",
+      "bytes_sent": 5063168,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 5.666,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "22_Низ_джинсы_синий_деним_базовый_denim.jpg",
+      "bytes_sent": 100403,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.304,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+    },
+    {
+      "image": "23_Низ_джинсы_синий_деним_текстура_денима.jpg",
+      "bytes_sent": 1379399,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 5.214,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "24_Низ_джинсы_синий_деним_другая_фактура.jpg",
+      "bytes_sent": 6290260,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 5.064,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "25_Низ_брюки_коричневый_вельвет_вельвет_коричневый.jpg",
+      "bytes_sent": 2039839,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 3.563,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "26_Низ_брюки_не_нормирован_лён_материал_лён.jpg",
+      "bytes_sent": 309583,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.773,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "27_Низ_брюки_не_нормирован_хлопок_материал_хлопок.jpg",
+      "bytes_sent": 280095,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.763,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "28_Низ_шорты_деним_деним_тип_denim.jpg",
+      "bytes_sent": 161271,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.634,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+    },
+    {
+      "image": "29_Низ_шорты_не_нормирован_не_нормирован_тип_шорты.jpg",
+      "bytes_sent": 62155,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.544,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+    },
+    {
+      "image": "31_Низ_юбка_синий-индиго_лён_цвет_материал.jpg",
+      "bytes_sent": 19689503,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 0.0,
+      "cancel_ok": false,
+      "error": "skipped (>10MB)"
+    },
+    {
+      "image": "32_Низ_юбка_не_нормирован_хлопок_материал_хлопок.jpg",
+      "bytes_sent": 2762049,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.252,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Server error '502 Bad Gateway' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502"
+    },
+    {
+      "image": "33_Низ_юбка_не_нормирован_шёлк_материал_шёлк.jpg",
+      "bytes_sent": 1459257,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 5.14,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "34_Низ_спортивные_штаны_не_нормирован_трикотаж_тип_sportswear.jpg",
+      "bytes_sent": 266584,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.179,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "35_Низ_спортивные_штаны_не_нормирован_синтетика_спортивная_ткань.jpg",
+      "bytes_sent": 197891,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.357,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+    },
+    {
+      "image": "36_Низ_спортивные_штаны_не_нормирован_синтетика_другой_спортивный_вариант.jpg",
+      "bytes_sent": 406988,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.098,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "37_Обувь_кроссовки_не_нормирован_текстиль-кожа_базовый_sneaker.jpg",
+      "bytes_sent": 2294106,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 5.476,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "38_Обувь_кроссовки_красный_не_нормирован_цветовой_тест.jpg",
+      "bytes_sent": 7662191,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 6.33,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Server error '502 Bad Gateway' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502"
+    },
+    {
+      "image": "39_Обувь_кроссовки_белый_не_нормирован_светлая_обувь.jpg",
+      "bytes_sent": 1755690,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 5.306,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "40_Обувь_ботинки_чёрный-коричневый_кожа_кожа_обувь.jpg",
+      "bytes_sent": 6112653,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 5.956,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Server error '502 Bad Gateway' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502"
+    },
+    {
+      "image": "41_Обувь_ботинки_чёрный-коричневый_кожа_второй_вариант.jpg",
+      "bytes_sent": 4871143,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 6.58,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "42_Обувь_ботинки_коричневый_кожа_коричневая_кожа.jpg",
+      "bytes_sent": 3008959,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 5.497,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Server error '502 Bad Gateway' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502"
+    },
+    {
+      "image": "43_Обувь_туфли_чёрный-коричневый_кожа_тип_кожа.jpg",
+      "bytes_sent": 725854,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.939,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "47_Обувь_сандалии_не_нормирован_кожа_другой_вариант.jpg",
+      "bytes_sent": 41426,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.162,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+    },
+    {
+      "image": "48_Обувь_сандалии_не_нормирован_шёлк-кожа_материал-комбинация.jpg",
+      "bytes_sent": 36393,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.437,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+    },
+    {
+      "image": "49_Аксессуары_шапка_соломенный-нейтр._солома_материал_головной_убор.jpg",
+      "bytes_sent": 5732119,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 6.794,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "50_Аксессуары_шапка_не_нормирован_солома-ткань_другой_тип.jpg",
+      "bytes_sent": 1737615,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 5.402,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Server error '502 Bad Gateway' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502"
+    },
+    {
+      "image": "52_Аксессуары_шарф_не_нормирован_текстиль_тип_материал.jpg",
+      "bytes_sent": 506978,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.759,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "53_Аксессуары_шарф_не_нормирован_хлопок-лён_материал.jpg",
+      "bytes_sent": 344704,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.627,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "54_Аксессуары_сумка_оливковый-коричневый_кожа_цвет_кожа.jpg",
+      "bytes_sent": 19936104,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 0.0,
+      "cancel_ok": false,
+      "error": "skipped (>10MB)"
+    },
+    {
+      "image": "55_Аксессуары_сумка_фиолетовый_бархат_цвет_фактура.jpg",
+      "bytes_sent": 23952013,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 0.0,
+      "cancel_ok": false,
+      "error": "skipped (>10MB)"
+    },
+    {
+      "image": "56_Аксессуары_сумка_белый_шёлк_материал_светлый_цвет.jpg",
+      "bytes_sent": 8730693,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 5.791,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '413 Request Entity Too Large' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413"
+    },
+    {
+      "image": "57_Аксессуары_ремень_чёрный_кожа_чёрная_кожа.jpg",
+      "bytes_sent": 229582,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 3.165,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+    },
+    {
+      "image": "58_Аксессуары_ремень_коричневый_кожа_коричневая_кожа.jpg",
+      "bytes_sent": 94499,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.745,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+    },
+    {
+      "image": "59_Аксессуары_ремень_не_нормирован_кожа_дополнительный_leather-кейс.jpg",
+      "bytes_sent": 6869760,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 6.814,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Server error '502 Bad Gateway' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502"
+    },
+    {
+      "image": "60_Верх_водолазка_не_нормирован_трикотаж_отдельная_проверка_типа.jpg",
+      "bytes_sent": 148669,
+      "reply_received": false,
+      "reply_text": "",
+      "elapsed": 4.658,
+      "cancel_ok": false,
+      "error": "HTTPStatusError: Client error '400 Bad Request' for url 'https://api.telegram.org/bot8609887101:AAHbp8possNX9jj62sY9NIsCzslLjoGsxSI/sendPhoto'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+    }
+  ],
+  "finished_at": "2026-10-10T22:07:07.683082+00:00"
+}
