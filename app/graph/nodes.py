@@ -1,5 +1,6 @@
 """Узлы графа LangGraph."""
 
+import json
 import logging
 from html import escape as esc
 
@@ -8,6 +9,7 @@ from langchain_core.messages import AIMessage
 from app.db.repository import (
     add_item,
     delete_item,
+    get_colors,
     get_item,
     get_items,
     update_item_field,
@@ -106,13 +108,17 @@ async def _persist_item(state: BotState, draft: dict) -> dict:
     Используется и после подтверждения распознавания,
     и после ручного ввода.
     """
+    item_colors = draft.get("colors") or []
+    if isinstance(item_colors, str):
+        item_colors = [item_colors]
+
     try:
         await add_item(
             user_id=state["user_id"],
             photo_file_id=draft["photo_file_id"],
             category=draft["category"],
             type=draft["type"],
-            color=draft["color"],
+            colors=item_colors,
             material=draft.get("material", ""),
             warmth_level=draft["warmth_level"],
             waterproof=draft["waterproof"],
@@ -138,7 +144,7 @@ async def _persist_item(state: BotState, draft: dict) -> dict:
                 content=(
                     "Готово! Сохранил вещь:\n"
                     f"• {draft['category']} / {draft['type']}\n"
-                    f"• цвет: {draft['color']}\n"
+                    f"• цвета: {', '.join(item_colors) if item_colors else '—'}\n"
                     f"• материал: {draft.get('material') or '—'}\n"
                     f"• тепло: {draft['warmth_level']}/5\n"
                     f"• водонепроницаемая: {waterproof_str}\n"
@@ -227,9 +233,16 @@ def _item_caption(item) -> str:
     """Подпись под фото вещи."""
     waterproof_mark = "💧 " if item.waterproof else ""
     material_line = f"материал: {item.material}\n" if item.material else ""
+
+    item_colors = get_colors(item)
+    if item_colors:
+        color_line = f"цвета: {', '.join(item_colors)}\n"
+    else:
+        color_line = ""
+
     return (
         f"<b>{item.category} / {item.type}</b>\n"
-        f"цвет: {item.color}\n"
+        f"{color_line}"
         f"{material_line}"
         f"{waterproof_mark}тепло: {item.warmth_level}/5, "
         f"стиль: {item.formal_level}, сезон: {item.season}"
@@ -417,7 +430,7 @@ async def list_noop_node(state: BotState) -> dict:
 EDIT_FIELD_TO_DB = {
     "category": "category",
     "type": "type",
-    "color": "color",
+    "colors": "colors",
     "material": "material",
     "warmth": "warmth_level",
     "waterproof": "waterproof",
@@ -429,7 +442,7 @@ EDIT_FIELD_TO_DB = {
 EDIT_FIELD_LABEL = {
     "category": "Категория",
     "type": "Тип",
-    "color": "Цвет",
+    "colors": "Цвета",
     "material": "Материал",
     "warmth": "Тепло (1–5)",
     "waterproof": "Водонепроницаемость (да/нет)",
@@ -438,7 +451,7 @@ EDIT_FIELD_LABEL = {
 }
 
 # Поля со свободным текстовым вводом
-TEXT_EDIT_FIELDS = {"type", "color"}
+TEXT_EDIT_FIELDS = {"type", "colors"}
 
 # Поля с фиксированными вариантами.
 # Формат: field → [(подпись на кнопке, код для callback, значение для БД), ...]
@@ -499,10 +512,13 @@ def _validate_edit_field(
             return True, text, ""
         return False, None, "Слишком коротко. Напишите название типа."
 
-    if field == "color":
-        if len(text) >= 2:
-            return True, text, ""
-        return False, None, "Напишите цвет текстом."
+    if field == "colors":
+        parts = [p.strip().lower() for p in text.split(",") if p.strip()]
+        if 1 <= len(parts) <= 3 and all(len(p) >= 2 for p in parts):
+            return True, parts, ""
+        return False, None, (
+            "Введите от 1 до 3 цветов через запятую."
+        )
 
     if field == "material":
         if lower in VALID_MATERIALS:
@@ -543,6 +559,9 @@ def _validate_edit_field(
 
 def _field_value_str(item, field: str) -> str:
     """Текущее значение поля в виде строки для отображения."""
+    if field == "colors":
+        return ", ".join(get_colors(item)) or "—"
+
     db_field = EDIT_FIELD_TO_DB[field]
     value = getattr(item, db_field)
     if isinstance(value, bool):
@@ -569,10 +588,11 @@ async def list_edit_node(state: BotState) -> dict:
             "step": None, "intent": None,
         }
 
+    item_colors_str = ", ".join(get_colors(item)) or "—"
     caption = (
         "✏️ <b>Редактирование вещи</b>\n\n"
         f"{item.category} / {item.type}\n"
-        f"цвет: {item.color}\n"
+        f"цвета: {item_colors_str}\n"
         f"материал: {item.material or '—'}\n"
         f"тепло: {item.warmth_level}/5\n"
         f"водонепроницаемая: {'да' if item.waterproof else 'нет'}\n"
@@ -587,7 +607,7 @@ async def list_edit_node(state: BotState) -> dict:
             {"text": "Тип", "callback_data": "list:edit:type"},
         ],
         [
-            {"text": "Цвет", "callback_data": "list:edit:color"},
+            {"text": "Цвета", "callback_data": "list:edit:colors"},
             {"text": "Материал", "callback_data": "list:edit:material"},
         ],
         [
@@ -687,12 +707,16 @@ async def list_edit_field_node(state: BotState) -> dict:
         )
         next_step = "list_edit_choice"
     else:
-        # Текстовый ввод (тип, цвет)
+        # Текстовый ввод (тип, цвета)
         rows = [[{"text": "❌ Отмена", "callback_data": "list:edit:cancel"}]]
+        if field == "colors":
+            hint_text = "Введите от 1 до 3 цветов через запятую, например: красный, белый, синий."
+        else:
+            hint_text = "Введите новое значение текстом."
         caption = (
             f"✏️ <b>{label}</b>\n\n"
             f"Текущее значение: <b>{current_str}</b>\n\n"
-            "Введите новое значение текстом."
+            f"{hint_text}"
         )
         next_step = "list_edit_input"
 
@@ -761,6 +785,11 @@ async def list_edit_choice_node(state: BotState) -> dict:
         }
 
     item_id = ids[index]
+
+    # Для colors сериализуем в JSON (см. update_item_field — хранит строку)
+    if field == "colors":
+        value = json.dumps(value, ensure_ascii=False)
+
     ok = await update_item_field(
         item_id, user_id, EDIT_FIELD_TO_DB[field], value
     )
@@ -842,6 +871,11 @@ async def list_edit_save_node(state: BotState) -> dict:
         }
 
     item_id = ids[index]
+
+    # Для colors сериализуем в JSON
+    if field == "colors":
+        value = json.dumps(value, ensure_ascii=False)
+
     ok = await update_item_field(
         item_id, user_id, EDIT_FIELD_TO_DB[field], value
     )
@@ -899,7 +933,7 @@ async def list_delete_node(state: BotState) -> dict:
     caption = (
         "🗑 <b>Удалить вещь?</b>\n\n"
         f"{item.category} / {item.type}\n"
-        f"цвет: {item.color}\n\n"
+        f"цвета: {', '.join(get_colors(item)) or '—'}\n\n"
         "Это действие необратимо."
     )
 
@@ -1096,7 +1130,7 @@ VALID_MATERIALS = {"хлопок", "шерсть", "кожа", "деним", "т
 STEP_TO_FIELD = {
     "awaiting_category": "category",
     "awaiting_type": "type",
-    "awaiting_color": "color",
+    "awaiting_color": "colors",
     "awaiting_warmth": "warmth_level",
     "awaiting_waterproof": "waterproof",
     "awaiting_formal": "formal_level",
@@ -1148,9 +1182,13 @@ def _validate_answer(step: str, text: str) -> tuple[bool, object, str]:
         return False, None, "Напишите название типа вещи."
 
     if step == "awaiting_color":
-        if len(text) >= 2:
-            return True, text, ""
-        return False, None, "Напишите цвет вещи текстом."
+        parts = [p.strip().lower() for p in text.split(",") if p.strip()]
+        if 1 <= len(parts) <= 3 and all(len(p) >= 2 for p in parts):
+            return True, parts, ""
+        return False, None, (
+            "Введите от 1 до 3 цветов через запятую, например: "
+            "красный, белый, синий."
+        )
 
     if step == "awaiting_warmth":
         try:
@@ -1253,7 +1291,9 @@ async def add_photo_node(state: BotState) -> dict:
 
     options = result["options"]
     draft["options"] = options
-    draft["predicted_color"] = result["color"]
+    # result["color"] — топ-1, result["color_candidates"] — топ-3.
+    # Пока в draft кладём только топ-1 как список (для будущего UI).
+    draft["predicted_color"] = [result["color"]]
     draft["confidence"] = result["confidence"]
 
     # Формируем список вариантов в тексте
@@ -1295,7 +1335,7 @@ async def add_confirm_category_node(state: BotState) -> dict:
         if opt["type"].lower() == text:
             draft["category"] = opt["category"]
             draft["type"] = opt["type"]
-            draft["color"] = draft.get("predicted_color") or ""
+            draft["colors"] = draft.get("predicted_color") or []
             draft["warmth_level"] = opt["warmth_level"]
             draft["waterproof"] = opt["waterproof"]
             draft["formal_level"] = opt["formal_level"]
@@ -1317,7 +1357,7 @@ async def add_confirm_category_node(state: BotState) -> dict:
             opt = options[0]
             draft["category"] = opt["category"]
             draft["type"] = opt["type"]
-            draft["color"] = draft.get("predicted_color") or ""
+            draft["colors"] = draft.get("predicted_color") or []
             draft["warmth_level"] = opt["warmth_level"]
             draft["waterproof"] = opt["waterproof"]
             draft["formal_level"] = opt["formal_level"]

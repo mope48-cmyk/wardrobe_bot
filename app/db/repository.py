@@ -1,5 +1,6 @@
 """Функции для работы с базой данных (CRUD для WardrobeItem)."""
 
+import json
 import logging
 from typing import Sequence
 
@@ -17,21 +18,21 @@ async def add_item(
     photo_file_id: str,
     category: str,
     type: str,
-    color: str = "",
+    colors: list[str] | None = None,
     material: str = "",
     warmth_level: int = 3,
     waterproof: bool = False,
     formal_level: str = "casual",
     season: str = "универсальная",
 ) -> WardrobeItem:
-    """Добавить вещь в гардероб. Возвращает созданный объект с id."""
+    """Добавить вещь. colors — список от 0 до 3 цветов."""
     async with SessionLocal() as session:
         item = WardrobeItem(
             user_id=user_id,
             photo_file_id=photo_file_id,
             category=category,
             type=type,
-            color=color,
+            colors=json.dumps(colors or [], ensure_ascii=False),
             material=material,
             warmth_level=warmth_level,
             waterproof=waterproof,
@@ -99,7 +100,7 @@ async def update_item_field(
     перезаписать id, user_id или created_at.
     """
     allowed = {
-        "category", "type", "color", "material", "warmth_level",
+        "category", "type", "colors", "material", "warmth_level",
         "waterproof", "formal_level", "season",
         "generated_photo_file_id",
     }
@@ -125,3 +126,16 @@ async def update_item_field(
             item_id, user_id, field, value,
         )
         return True
+
+
+def get_colors(item: WardrobeItem) -> list[str]:
+    """Разобрать JSON-поле colors в список. Возвращает [] при ошибке."""
+    if not item.colors:
+        return []
+    try:
+        data = json.loads(item.colors)
+        if isinstance(data, list):
+            return [str(c) for c in data][:3]
+    except Exception:
+        logger.exception("Не удалось разобрать colors: %r", item.colors)
+    return []

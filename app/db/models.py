@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, func
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -38,8 +38,9 @@ class WardrobeItem(Base):
     # Тип: футболка, джинсы, куртка и т.д.
     type: Mapped[str] = mapped_column(String(64), nullable=False)
 
-    # Основной цвет (например, "белый", "чёрный")
-    color: Mapped[str] = mapped_column(String(32), default="")
+    # Цвета вещи в виде JSON-массива до 3 штук.
+    # Примеры: '["красный"]', '["красный", "белый", "синий"]'
+    colors: Mapped[str] = mapped_column(Text, default="[]")
 
     # Материал (опционально)
     material: Mapped[str] = mapped_column(String(64), default="")

@@ -10,13 +10,18 @@ WORKDIR /app
 
 COPY requirements.txt .
 
-# Основные пакеты — с зеркала Aliyun (9.5 МБ/с из РФ).
+# 1. torch + torchvision — из CPU-индекса PyTorch (без CUDA, ~200 МБ вместо ~1.3 ГБ)
+RUN pip install \
+    --index-url https://download.pytorch.org/whl/cpu \
+    torch torchvision
+
+# 2. Остальные зависимости — из зеркала Aliyun (без CUDA-зависимостей)
 RUN pip install \
     --index-url https://mirrors.aliyun.com/pypi/simple/ \
     --trusted-host mirrors.aliyun.com \
     -r requirements.txt
 
-# Каталоги под БД и кэш модели
+# 3. Каталоги под БД и кэш модели
 RUN mkdir -p /app/data "$HF_HOME" && chown -R user:user /app/data /home/user/.cache
 
 COPY --chown=user:user . .
