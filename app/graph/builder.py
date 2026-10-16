@@ -69,6 +69,8 @@ def route_condition(state: BotState) -> str:
         return "list_delete_cancel"
     if text == "list:toggle_photo":
         return "list_toggle_photo"
+    if text == "list:delete_product_photo":
+        return "list_delete_product_photo"
     if text == "list:make_product_photo":
         return "list_make_product_photo"
 
@@ -160,6 +162,9 @@ def build_graph():
     builder.add_node("list_delete_do", nodes.list_delete_do_node)
     builder.add_node("list_delete_cancel", nodes.list_delete_cancel_node)
     builder.add_node("list_toggle_photo", nodes.list_toggle_photo_node)
+    builder.add_node(
+        "list_delete_product_photo", nodes.list_delete_product_photo_node
+    )
     builder.add_node("list_make_product_photo", nodes.list_make_product_photo_node)
 
     # /outfit
@@ -195,6 +200,7 @@ def build_graph():
             "list_delete_do": "list_delete_do",
             "list_delete_cancel": "list_delete_cancel",
             "list_toggle_photo": "list_toggle_photo",
+            "list_delete_product_photo": "list_delete_product_photo",
             "list_make_product_photo": "list_make_product_photo",
             "outfit_start": "outfit_start",
             "outfit_location": "outfit_location",
@@ -214,6 +220,7 @@ def build_graph():
         "list_prev", "list_next", "list_noop", "list_edit", "list_delete",
         "list_delete_do", "list_delete_cancel",
         "list_toggle_photo", "list_make_product_photo",
+        "list_delete_product_photo",
         "list_edit_field", "list_edit_choice", "list_edit_save", "list_edit_cancel",
         "outfit_start", "outfit_location", "outfit_occasion",
         "add_start", "add_expect_photo", "add_photo",

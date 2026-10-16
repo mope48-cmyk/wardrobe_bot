@@ -1,5 +1,6 @@
 """Обработчики Telegram-бота."""
 
+import asyncio
 import logging
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from aiogram.types import (
 from langchain_core.messages import HumanMessage
 
 from app.graph.builder import build_graph
+from app.services.product_photo_bg import generate_product_photo_bg
 
 logger = logging.getLogger(__name__)
 
@@ -114,86 +116,10 @@ def _build_inline_markup(spec: list[list[dict]] | None):
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def _send_product_photo(message: Message, ai_msg, extra: dict) -> None:
-    """Отправить сгенерированное товарное фото и сохранить file_id."""
-    from app.db.repository import update_item_field
-
-    path = Path(extra["product_photo_path"])
-    item_id = extra.get("item_id")
-    edit_message_id = extra.get("edit_message_id")
-    inline_markup = _build_inline_markup(extra.get("inline_keyboard"))
-
-    try:
-        if not path.exists():
-            raise FileNotFoundError(str(path))
-
-        file_bytes = path.read_bytes()
-        input_file = BufferedInputFile(file_bytes, filename=path.name)
-
-        new_file_id = None
-        if edit_message_id:
-            try:
-                resp = await message.bot.edit_message_media(
-                    chat_id=message.chat.id,
-                    message_id=edit_message_id,
-                    media=InputMediaPhoto(
-                        media=input_file,
-                        caption=ai_msg.content or "…",
-                        parse_mode="HTML",
-                    ),
-                    reply_markup=inline_markup,
-                )
-                if hasattr(resp, "photo") and resp.photo:
-                    new_file_id = resp.photo[-1].file_id
-            except Exception:
-                logger.exception(
-                    "edit_message_media не удался, отправляю новое сообщение"
-                )
-                resp = await message.answer_photo(
-                    photo=BufferedInputFile(file_bytes, filename=path.name),
-                    caption=ai_msg.content or "…",
-                    reply_markup=inline_markup,
-                )
-                new_file_id = resp.photo[-1].file_id if resp.photo else None
-        else:
-            resp = await message.answer_photo(
-                photo=input_file,
-                caption=ai_msg.content or "…",
-                reply_markup=inline_markup,
-            )
-            new_file_id = resp.photo[-1].file_id if resp.photo else None
-
-        if new_file_id and item_id:
-            user_id = message.from_user.id if message.from_user else 0
-            try:
-                await update_item_field(
-                    item_id, user_id, "generated_photo_file_id", new_file_id,
-                )
-                logger.info(
-                    "Товарное фото сохранено: item_id=%s file_id=%s",
-                    item_id, new_file_id,
-                )
-            except Exception:
-                logger.exception("Не удалось сохранить generated_photo_file_id")
-
-    except Exception:
-        logger.exception("Не удалось отправить product photo")
-        await message.answer(
-            ai_msg.content or "…",
-            reply_markup=inline_markup,
-        )
-    finally:
-        try:
-            path.unlink(missing_ok=True)
-        except Exception:
-            logger.exception("Не удалось удалить временный файл")
-
-
 async def _send_ai_message(message: Message, ai_msg) -> None:
     """Отправить одно сообщение ассистента.
 
     Поддерживает:
-    - product_photo_path → отправка сгенерированного товарного фото;
     - media_group → sendMediaGroup (до 10 фото, caption только у первого);
     - photo_file_id + edit_message_id + edit_mode:
         * "media"   → edit_message_media;
@@ -203,11 +129,6 @@ async def _send_ai_message(message: Message, ai_msg) -> None:
     - текст как fallback.
     """
     extra = getattr(ai_msg, "additional_kwargs", None) or {}
-
-    # Сценарий 0: product photo (локальный файл → Telegram → сохранить file_id)
-    if extra.get("product_photo_path"):
-        await _send_product_photo(message, ai_msg, extra)
-        return
 
     photo_file_id = extra.get("photo_file_id")
     edit_message_id = extra.get("edit_message_id")
@@ -417,3 +338,20 @@ async def handle_callback(callback: CallbackQuery) -> None:
 
     for ai_msg in new_ai_messages:
         await _send_ai_message(callback.message, ai_msg)
+
+        # Если узел попросил запустить фоновую генерацию — запускаем
+        extra = getattr(ai_msg, "additional_kwargs", None) or {}
+        cfg = extra.get("start_product_photo")
+        if cfg:
+            asyncio.create_task(generate_product_photo_bg(
+                bot=callback.bot,
+                chat_id=callback.message.chat.id,
+                card_message_id=callback.message.message_id,
+                item_id=cfg["item_id"],
+                user_id=cfg["user_id"],
+                photo_file_id=cfg["photo_file_id"],
+                category=cfg["category"],
+                item_type=cfg["item_type"],
+                card_index=cfg["card_index"],
+                card_total=cfg["card_total"],
+            ))

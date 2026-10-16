@@ -16,8 +16,6 @@ from app.db.repository import (
 )
 from app.graph.state import BotState
 from app.services.outfit import select_outfit
-from app.services.product_photo import make_product_photo
-from app.services.telegram_files import download_photo_by_file_id
 from app.services.vision import classify_clothing
 from app.services.weather import geocode_city, get_weather
 
@@ -255,24 +253,35 @@ def _list_keyboard(
     has_generated: bool,
     show_original: bool,
 ) -> list[list[dict]]:
+    """Inline-клавиатура карточки вещи."""
     prev_cb = "list:prev" if index > 0 else "list:noop:first"
     next_cb = "list:next" if index < total - 1 else "list:noop:last"
 
     if has_generated:
-        toggle_text = "📷 Оригинал" if not show_original else "📸 Фото для каталога"
-        toggle_cb = "list:toggle_photo"
+        toggle_text = (
+            "📷 Оригинал" if not show_original else "📸 Фото каталога"
+        )
+        row2 = [
+            {"text": toggle_text, "callback_data": "list:toggle_photo"},
+            {
+                "text": "🗑 Удалить фото каталога",
+                "callback_data": "list:delete_product_photo",
+            },
+        ]
     else:
-        toggle_text = "📸 Сделать фото для каталога"
-        toggle_cb = "list:make_product_photo"
+        row2 = [
+            {
+                "text": "📸 Сделать фото для каталога",
+                "callback_data": "list:make_product_photo",
+            },
+        ]
 
     return [
         [
             {"text": "✏️ Редактировать", "callback_data": "list:edit"},
-            {"text": "🗑 Удалить", "callback_data": "list:delete"},
+            {"text": "🗑 Удалить вещь", "callback_data": "list:delete"},
         ],
-        [
-            {"text": toggle_text, "callback_data": toggle_cb},
-        ],
+        row2,
         [
             {"text": "⬅️ Назад", "callback_data": prev_cb},
             {"text": "Вперёд ➡️", "callback_data": next_cb},
@@ -1040,15 +1049,46 @@ async def list_toggle_photo_node(state: BotState) -> dict:
     )
 
 
+async def list_delete_product_photo_node(state: BotState) -> dict:
+    """Удалить фото из каталога без подтверждения."""
+    ids = state.get("list_ids") or []
+    index = state.get("list_index") or 0
+    user_id = state["user_id"]
+
+    if not ids or index >= len(ids):
+        return {
+            "messages": [AIMessage(content="Нечего удалять.")],
+            "step": None, "intent": None,
+        }
+
+    item_id = ids[index]
+    ok = await update_item_field(
+        item_id, user_id, "generated_photo_file_id", None
+    )
+    if not ok:
+        return {
+            "messages": [
+                AIMessage(
+                    content="Не удалось удалить фото. Попробуйте позже.",
+                    additional_kwargs=_kb(MENU_KEYBOARD),
+                )
+            ],
+            "step": None, "intent": None,
+        }
+
+    # Возвращаемся к карточке с оригиналом
+    return await _render_current(
+        {**state, "show_original": True},
+        edit_mode="caption",
+    )
+
+
 async def list_make_product_photo_node(state: BotState) -> dict:
-    """Сгенерировать товарное фото для текущей вещи.
+    """Показать карточку в состоянии «⏳ Готовится…».
 
-    Скачивает оригинал из Telegram, обрабатывает SegFormer+rembg,
-    сохраняет результат во временный файл, отдаёт путь в additional_kwargs.
-    Handlers сам загрузит фото в Telegram и запишет file_id в БД.
+    Реальная генерация запускается в handlers после graph.ainvoke —
+    фоновая задача, чтобы не блокировать другие сообщения.
     """
-    import uuid
-
     ids = state.get("list_ids") or []
     index = state.get("list_index") or 0
     edit_message_id = state.get("edit_message_id")
@@ -1066,57 +1106,46 @@ async def list_make_product_photo_node(state: BotState) -> dict:
             "step": None, "intent": None,
         }
 
-    image_bytes = await download_photo_by_file_id(item.photo_file_id)
-    if not image_bytes:
-        return {
-            "messages": [
-                AIMessage(
-                    content="Не удалось скачать фото вещи. Попробуйте позже.",
-                    additional_kwargs=_kb(MENU_KEYBOARD),
-                )
-            ],
-            "step": None, "intent": None,
-        }
+    colors_str = ", ".join(get_colors(item)) or "—"
+    material_line = f"материал: {item.material}\n" if item.material else ""
+    waterproof_mark = "💧 " if item.waterproof else ""
 
-    product_bytes = make_product_photo(image_bytes, item.category)
-
-    tmp_path = f"/tmp/product_photo_{uuid.uuid4().hex}.jpg"
-    try:
-        with open(tmp_path, "wb") as f:
-            f.write(product_bytes)
-    except Exception:
-        logger.exception("Не удалось сохранить временный файл")
-        return {
-            "messages": [
-                AIMessage(
-                    content="Не удалось сохранить товарное фото.",
-                    additional_kwargs=_kb(MENU_KEYBOARD),
-                )
-            ],
-            "step": None, "intent": None,
-        }
-
-    header = f"📋 Вещь <b>{index + 1}</b> из <b>{len(ids)}</b>\n\n"
-    caption = header + _item_caption(item) + "\n📸 <i>товарное фото</i>"
-    keyboard = _list_keyboard(index, len(ids), has_generated=True, show_original=False)
+    caption = (
+        f"📋 Вещь <b>{index + 1}</b> из <b>{len(ids)}</b>\n\n"
+        f"<b>{item.category} / {item.type}</b>\n"
+        f"цвета: {colors_str}\n"
+        f"{material_line}"
+        f"{waterproof_mark}тепло: {item.warmth_level}/5, "
+        f"стиль: {item.formal_level}, сезон: {item.season}\n\n"
+        f"⏳ <i>Готовится фото для каталога…</i>"
+    )
 
     additional: dict = {
-        "product_photo_path": tmp_path,
-        "item_id": item.id,
-        "inline_keyboard": keyboard,
-        "edit_mode": "media",
+        "photo_file_id": item.photo_file_id,
+        "edit_mode": "caption",
+        "start_product_photo": {
+            "item_id": item.id,
+            "user_id": state["user_id"],
+            "photo_file_id": item.photo_file_id,
+            "category": item.category,
+            "item_type": item.type,
+            "card_index": index,
+            "card_total": len(ids),
+        },
     }
     if edit_message_id is not None:
         additional["edit_message_id"] = edit_message_id
 
     return {
-        "messages": [AIMessage(content=caption, additional_kwargs=additional)],
+        "messages": [
+            AIMessage(content=caption, additional_kwargs=additional)
+        ],
         "step": "list_view",
         "intent": "list",
         "list_ids": ids,
         "list_index": index,
         "edit_message_id": edit_message_id,
-        "show_original": False,
+        "show_original": True,
     }
 
 
