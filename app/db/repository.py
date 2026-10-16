@@ -101,6 +101,7 @@ async def update_item_field(
     allowed = {
         "category", "type", "color", "material", "warmth_level",
         "waterproof", "formal_level", "season",
+        "generated_photo_file_id",
     }
     if field not in allowed:
         logger.warning("Попытка обновить запрещённое поле: %s", field)

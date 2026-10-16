@@ -26,6 +26,12 @@ class WardrobeItem(Base):
     # без скачивания и повторной загрузки.
     photo_file_id: Mapped[str] = mapped_column(String(256), nullable=False)
 
+    # file_id версии фото с вырезанным фоном (опционально).
+    # Создаётся через rembg — для аккуратных карточек вещи в /list и /outfit.
+    generated_photo_file_id: Mapped[str | None] = mapped_column(
+        String(256), nullable=True
+    )
+
     # Категория: верх / низ / обувь / аксессуар
     category: Mapped[str] = mapped_column(String(32), nullable=False)
 

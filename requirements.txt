@@ -13,5 +13,8 @@ sentencepiece
 protobuf
 timm
 ftfy
+rembg
+onnxruntime
+scipy
 pillow>=10.0.0
 huggingface_hub

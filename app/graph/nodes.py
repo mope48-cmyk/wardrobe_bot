@@ -14,6 +14,8 @@ from app.db.repository import (
 )
 from app.graph.state import BotState
 from app.services.outfit import select_outfit
+from app.services.product_photo import make_product_photo
+from app.services.telegram_files import download_photo_by_file_id
 from app.services.vision import classify_clothing
 from app.services.weather import geocode_city, get_weather
 
@@ -234,19 +236,29 @@ def _item_caption(item) -> str:
     )
 
 
-def _list_keyboard(index: int, total: int) -> list[list[dict]]:
-    """Inline-клавиатура для просмотра одной вещи.
-
-    На границах prev/next становятся noop-кнопками — они не меняют
-    состояние, но показывают подсказку через callback.answer (в handlers).
-    """
+def _list_keyboard(
+    index: int,
+    total: int,
+    has_generated: bool,
+    show_original: bool,
+) -> list[list[dict]]:
     prev_cb = "list:prev" if index > 0 else "list:noop:first"
     next_cb = "list:next" if index < total - 1 else "list:noop:last"
+
+    if has_generated:
+        toggle_text = "📷 Оригинал" if not show_original else "📸 Фото для каталога"
+        toggle_cb = "list:toggle_photo"
+    else:
+        toggle_text = "📸 Сделать фото для каталога"
+        toggle_cb = "list:make_product_photo"
 
     return [
         [
             {"text": "✏️ Редактировать", "callback_data": "list:edit"},
             {"text": "🗑 Удалить", "callback_data": "list:delete"},
+        ],
+        [
+            {"text": toggle_text, "callback_data": toggle_cb},
         ],
         [
             {"text": "⬅️ Назад", "callback_data": prev_cb},
@@ -311,12 +323,22 @@ async def _render_current(state: BotState, edit_mode: str = "media") -> dict:
             "list_index": new_index,
         })
 
+    show_original = bool(state.get("show_original") or False)
+    has_generated = bool(item.generated_photo_file_id)
+
+    if has_generated and not show_original:
+        photo_to_show = item.generated_photo_file_id
+        mode_mark = "\n📸 <i>товарное фото</i>"
+    else:
+        photo_to_show = item.photo_file_id
+        mode_mark = ""
+
     header = f"📋 Вещь <b>{index + 1}</b> из <b>{total}</b>\n\n"
-    caption = header + _item_caption(item)
+    caption = header + _item_caption(item) + mode_mark
 
     additional: dict = {
-        "photo_file_id": item.photo_file_id,
-        "inline_keyboard": _list_keyboard(index, total),
+        "photo_file_id": photo_to_show,
+        "inline_keyboard": _list_keyboard(index, total, has_generated, show_original),
         "edit_mode": edit_mode,
     }
     if edit_message_id is not None:
@@ -973,6 +995,95 @@ async def list_delete_cancel_node(state: BotState) -> dict:
     edit_mode="caption": фото то же, меняется только caption и кнопки.
     """
     return await _render_current(state, edit_mode="caption")
+
+
+async def list_toggle_photo_node(state: BotState) -> dict:
+    """Переключить: оригинал ↔ товарное фото."""
+    current = bool(state.get("show_original") or False)
+    return await _render_current(
+        {**state, "show_original": not current},
+        edit_mode="caption",
+    )
+
+
+async def list_make_product_photo_node(state: BotState) -> dict:
+    """Сгенерировать товарное фото для текущей вещи.
+
+    Скачивает оригинал из Telegram, обрабатывает SegFormer+rembg,
+    сохраняет результат во временный файл, отдаёт путь в additional_kwargs.
+    Handlers сам загрузит фото в Telegram и запишет file_id в БД.
+    """
+    import uuid
+
+    ids = state.get("list_ids") or []
+    index = state.get("list_index") or 0
+    edit_message_id = state.get("edit_message_id")
+
+    if not ids or index >= len(ids):
+        return {
+            "messages": [AIMessage(content="Нечего обрабатывать.")],
+            "step": None, "intent": None,
+        }
+
+    item = await get_item(ids[index])
+    if item is None:
+        return {
+            "messages": [AIMessage(content="Вещь не найдена.")],
+            "step": None, "intent": None,
+        }
+
+    image_bytes = await download_photo_by_file_id(item.photo_file_id)
+    if not image_bytes:
+        return {
+            "messages": [
+                AIMessage(
+                    content="Не удалось скачать фото вещи. Попробуйте позже.",
+                    additional_kwargs=_kb(MENU_KEYBOARD),
+                )
+            ],
+            "step": None, "intent": None,
+        }
+
+    product_bytes = make_product_photo(image_bytes, item.category)
+
+    tmp_path = f"/tmp/product_photo_{uuid.uuid4().hex}.jpg"
+    try:
+        with open(tmp_path, "wb") as f:
+            f.write(product_bytes)
+    except Exception:
+        logger.exception("Не удалось сохранить временный файл")
+        return {
+            "messages": [
+                AIMessage(
+                    content="Не удалось сохранить товарное фото.",
+                    additional_kwargs=_kb(MENU_KEYBOARD),
+                )
+            ],
+            "step": None, "intent": None,
+        }
+
+    header = f"📋 Вещь <b>{index + 1}</b> из <b>{len(ids)}</b>\n\n"
+    caption = header + _item_caption(item) + "\n📸 <i>товарное фото</i>"
+    keyboard = _list_keyboard(index, len(ids), has_generated=True, show_original=False)
+
+    additional: dict = {
+        "product_photo_path": tmp_path,
+        "item_id": item.id,
+        "inline_keyboard": keyboard,
+        "edit_mode": "media",
+    }
+    if edit_message_id is not None:
+        additional["edit_message_id"] = edit_message_id
+
+    return {
+        "messages": [AIMessage(content=caption, additional_kwargs=additional)],
+        "step": "list_view",
+        "intent": "list",
+        "list_ids": ids,
+        "list_index": index,
+        "edit_message_id": edit_message_id,
+        "show_original": False,
+    }
 
 
 # ---------- /add ----------

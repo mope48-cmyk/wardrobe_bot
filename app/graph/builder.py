@@ -67,6 +67,10 @@ def route_condition(state: BotState) -> str:
         return "list_delete_do"
     if text == "list:delete_cancel":
         return "list_delete_cancel"
+    if text == "list:toggle_photo":
+        return "list_toggle_photo"
+    if text == "list:make_product_photo":
+        return "list_make_product_photo"
 
     # 1. Slash-команды (работают всегда, даже посреди диалога)
     if text.startswith("/"):
@@ -155,6 +159,8 @@ def build_graph():
     builder.add_node("list_delete", nodes.list_delete_node)
     builder.add_node("list_delete_do", nodes.list_delete_do_node)
     builder.add_node("list_delete_cancel", nodes.list_delete_cancel_node)
+    builder.add_node("list_toggle_photo", nodes.list_toggle_photo_node)
+    builder.add_node("list_make_product_photo", nodes.list_make_product_photo_node)
 
     # /outfit
     builder.add_node("outfit_start", nodes.outfit_start_node)
@@ -188,6 +194,8 @@ def build_graph():
             "list_delete": "list_delete",
             "list_delete_do": "list_delete_do",
             "list_delete_cancel": "list_delete_cancel",
+            "list_toggle_photo": "list_toggle_photo",
+            "list_make_product_photo": "list_make_product_photo",
             "outfit_start": "outfit_start",
             "outfit_location": "outfit_location",
             "outfit_occasion": "outfit_occasion",
@@ -205,6 +213,7 @@ def build_graph():
         "start", "help", "cancel", "fallback", "stub", "list",
         "list_prev", "list_next", "list_noop", "list_edit", "list_delete",
         "list_delete_do", "list_delete_cancel",
+        "list_toggle_photo", "list_make_product_photo",
         "list_edit_field", "list_edit_choice", "list_edit_save", "list_edit_cancel",
         "outfit_start", "outfit_location", "outfit_occasion",
         "add_start", "add_expect_photo", "add_photo",

@@ -32,5 +32,6 @@ class BotState(TypedDict, total=False):
     list_index: int
     list_source: str | None
     edit_message_id: int | None
+    show_original: bool
 
     error: str | None
