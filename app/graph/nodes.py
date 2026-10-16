@@ -36,7 +36,8 @@ STEP_KEYBOARDS: dict[str, list[list[str]]] = {
     "awaiting_photo": [["❌ Отмена"]],
     "awaiting_category": [["верх", "низ"], ["обувь", "аксессуар"], ["❌ Отмена"]],
     "awaiting_type": [["❌ Отмена"]],
-    "awaiting_color": [["❌ Отмена"]],
+    "awaiting_color": [["✅ Подтвердить", "🔄 Изменить"], ["❌ Отмена"]],
+    "awaiting_color_text": [["❌ Отмена"]],
     "awaiting_warmth": [["1", "2", "3"], ["4", "5"], ["❌ Отмена"]],
     "awaiting_waterproof": [["да", "нет"], ["❌ Отмена"]],
     "awaiting_formal": [["casual", "business", "sport"], ["❌ Отмена"]],
@@ -230,6 +231,26 @@ async def stub_node(state: BotState) -> dict:
 # ---------- /list: постраничный просмотр ----------
 
 LIST_PREVIEW_LEN = 60  # сколько символов типа показывать в заголовке
+
+
+COLOR_EMOJI: dict[str, str] = {
+    "красный": "🔴", "бордовый": "🔴", "розовый": "🩷",
+    "оранжевый": "🟠", "терракотовый": "🟠",
+    "жёлтый": "🟡", "горчичный": "🟡",
+    "зелёный": "🟢", "оливковый": "🟢", "хаки": "🟢", "мятный": "🟢",
+    "голубой": "🔵", "бирюзовый": "🔵",
+    "синий": "🔵", "тёмно-синий": "🔵",
+    "фиолетовый": "🟣", "сиреневый": "🟣", "лиловый": "🟣",
+    "коричневый": "🟤", "тёмно-коричневый": "🟤",
+    "белый": "⚪", "кремовый": "⚪", "бежевый": "⚪",
+    "чёрный": "⚫",
+    "серый": "🩶", "тёмно-серый": "🩶", "светло-серый": "🩶",
+}
+
+
+def _format_color_with_emoji(color: str) -> str:
+    emoji = COLOR_EMOJI.get(color.lower(), "🎨")
+    return f"{emoji} {color}"
 
 
 def _item_caption(item) -> str:
@@ -1174,6 +1195,7 @@ STEP_TO_FIELD = {
     "awaiting_category": "category",
     "awaiting_type": "type",
     "awaiting_color": "colors",
+    "awaiting_color_text": "colors",
     "awaiting_warmth": "warmth_level",
     "awaiting_waterproof": "waterproof",
     "awaiting_formal": "formal_level",
@@ -1186,8 +1208,16 @@ NEXT_STEP = {
         "awaiting_type",
         "Уточните тип вещи (например: футболка, джинсы, куртка, кроссовки):",
     ),
-    "awaiting_type": ("awaiting_color", "Какого цвета вещь?"),
+    "awaiting_type": (
+        "awaiting_color_text",
+        "Какого цвета вещь? Введите от 1 до 3 цветов через запятую "
+        "(например: красный, белый, синий).",
+    ),
     "awaiting_color": (
+        "awaiting_warmth",
+        "Насколько вещь тёплая? Оцените от 1 (очень лёгкая) до 5 (очень тёплая):",
+    ),
+    "awaiting_color_text": (
         "awaiting_warmth",
         "Насколько вещь тёплая? Оцените от 1 (очень лёгкая) до 5 (очень тёплая):",
     ),
@@ -1224,7 +1254,7 @@ def _validate_answer(step: str, text: str) -> tuple[bool, object, str]:
             return True, text, ""
         return False, None, "Напишите название типа вещи."
 
-    if step == "awaiting_color":
+    if step in ("awaiting_color", "awaiting_color_text"):
         parts = [p.strip().lower() for p in text.split(",") if p.strip()]
         if 1 <= len(parts) <= 3 and all(len(p) >= 2 for p in parts):
             return True, parts, ""
@@ -1334,9 +1364,11 @@ async def add_photo_node(state: BotState) -> dict:
 
     options = result["options"]
     draft["options"] = options
-    # result["color"] — топ-1, result["color_candidates"] — топ-3.
-    # Пока в draft кладём только топ-1 как список (для будущего UI).
-    draft["predicted_color"] = [result["color"]]
+    # result["detected_colors"] — 1–3 основных цвета.
+    # Если по какой-то причине пусто — берём топ-1.
+    draft["predicted_colors"] = (
+        result.get("detected_colors") or [result["color"]]
+    )
     draft["confidence"] = result["confidence"]
 
     # Формируем список вариантов в тексте
@@ -1348,8 +1380,6 @@ async def add_photo_node(state: BotState) -> dict:
         else:
             lines.append(f"{i}. {opt['type']} — {pct}%")
 
-    lines.append("")
-    lines.append(f"Цвет: <b>{result['color']}</b>.")
     lines.append("")
     lines.append(
         "Выберите тип кнопкой ниже. Если ничего не подходит — нажмите "
@@ -1372,51 +1402,67 @@ async def add_confirm_category_node(state: BotState) -> dict:
     text = (state.get("input_text") or "").strip().lower()
     draft = dict(state.get("draft_item") or {})
     options = draft.get("options") or []
+    predicted = draft.get("predicted_colors") or []
+
+    # Формируем caption с эмодзи-цветами
+    if len(predicted) > 1:
+        colors_line = ", ".join(
+            _format_color_with_emoji(c) for c in predicted
+        )
+        prompt = (
+            f"Похоже, вещь многоцветная.\n\n"
+            f"Основные цвета: {colors_line}\n\n"
+            "Всё верно? Нажмите <b>✅ Подтвердить</b>, "
+            "или <b>🔄 Изменить</b>, чтобы ввести вручную."
+        )
+    elif len(predicted) == 1:
+        prompt = (
+            f"Похоже, вещь цвета: "
+            f"{_format_color_with_emoji(predicted[0])}.\n\n"
+            "Всё верно? Нажмите <b>✅ Подтвердить</b>, "
+            "или <b>🔄 Изменить</b>, чтобы ввести вручную."
+        )
+    else:
+        prompt = (
+            "Какого цвета вещь? Введите от 1 до 3 цветов через запятую."
+        )
+
+    def _go_to_color(d: dict) -> dict:
+        return {
+            "messages": [
+                AIMessage(
+                    content=prompt,
+                    additional_kwargs=_kb_for_step("awaiting_color"),
+                )
+            ],
+            "step": "awaiting_color",
+            "draft_item": d,
+        }
 
     # 1. Пользователь выбрал один из предложенных типов
     for opt in options:
         if opt["type"].lower() == text:
             draft["category"] = opt["category"]
             draft["type"] = opt["type"]
-            draft["colors"] = draft.get("predicted_color") or []
             draft["warmth_level"] = opt["warmth_level"]
             draft["waterproof"] = opt["waterproof"]
             draft["formal_level"] = opt["formal_level"]
             draft["season"] = opt["season"]
-            return {
-                "messages": [
-                    AIMessage(
-                        content="Из чего сделана вещь? Выберите материал:",
-                        additional_kwargs=_kb_for_step("awaiting_material"),
-                    )
-                ],
-                "step": "awaiting_material",
-                "draft_item": draft,
-            }
+            return _go_to_color(draft)
 
-    # 2. "да" → принять топ-1
+    # 2. "да" → топ-1
     if text in ("да", "yes", "верно", "ага", "ok", "+"):
         if options:
             opt = options[0]
             draft["category"] = opt["category"]
             draft["type"] = opt["type"]
-            draft["colors"] = draft.get("predicted_color") or []
             draft["warmth_level"] = opt["warmth_level"]
             draft["waterproof"] = opt["waterproof"]
             draft["formal_level"] = opt["formal_level"]
             draft["season"] = opt["season"]
-            return {
-                "messages": [
-                    AIMessage(
-                        content="Из чего сделана вещь? Выберите материал:",
-                        additional_kwargs=_kb_for_step("awaiting_material"),
-                    )
-                ],
-                "step": "awaiting_material",
-                "draft_item": draft,
-            }
+            return _go_to_color(draft)
 
-    # 3. "другое" или "нет" → ручной ввод
+    # 3. "другое" / "нет" → ручной путь
     if text in ("другое", "нет", "no", "неверно", "-"):
         return {
             "messages": [
@@ -1443,6 +1489,92 @@ async def add_confirm_category_node(state: BotState) -> dict:
                 additional_kwargs=_kb(_confirm_keyboard(options)),
             )
         ],
+    }
+
+
+async def add_color_node(state: BotState) -> dict:
+    """Обработка шага выбора цвета с предсказаниями."""
+    text = (state.get("input_text") or "").strip().lower()
+    draft = dict(state.get("draft_item") or {})
+    predicted = draft.get("predicted_colors") or []
+
+    # Подтверждение предсказанных цветов
+    if text in ("✅ подтвердить", "подтвердить", "да", "yes", "ok", "+"):
+        draft["colors"] = predicted or []
+        return {
+            "messages": [
+                AIMessage(
+                    content="Из чего сделана вещь? Выберите материал:",
+                    additional_kwargs=_kb_for_step("awaiting_material"),
+                )
+            ],
+            "step": "awaiting_material",
+            "draft_item": draft,
+        }
+
+    # Ручной ввод
+    if text in ("🔄 изменить", "изменить", "нет", "no", "-"):
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        "Введите от 1 до 3 цветов через запятую, "
+                        "например: красный, белый, синий."
+                    ),
+                    additional_kwargs=_kb_for_step("awaiting_color_text"),
+                )
+            ],
+            "step": "awaiting_color_text",
+            "draft_item": draft,
+        }
+
+    # Пользователь сразу ввёл цвета через запятую
+    valid, value, error = _validate_answer("awaiting_color", text)
+    if valid:
+        draft["colors"] = value
+        return {
+            "messages": [
+                AIMessage(
+                    content="Из чего сделана вещь? Выберите материал:",
+                    additional_kwargs=_kb_for_step("awaiting_material"),
+                )
+            ],
+            "step": "awaiting_material",
+            "draft_item": draft,
+        }
+
+    return {
+        "messages": [
+            AIMessage(
+                content=(
+                    "Нажмите <b>✅ Подтвердить</b>, "
+                    "<b>🔄 Изменить</b> или напишите цвета через запятую."
+                ),
+                additional_kwargs=_kb_for_step("awaiting_color"),
+            )
+        ],
+    }
+
+
+async def add_color_text_node(state: BotState) -> dict:
+    """Обработка текстового ввода цветов (через запятую)."""
+    text = (state.get("input_text") or "").strip()
+    draft = dict(state.get("draft_item") or {})
+
+    valid, value, error = _validate_answer("awaiting_color_text", text)
+    if not valid:
+        return {"messages": [AIMessage(content=error)]}
+
+    draft["colors"] = value
+    return {
+        "messages": [
+            AIMessage(
+                content="Из чего сделана вещь? Выберите материал:",
+                additional_kwargs=_kb_for_step("awaiting_material"),
+            )
+        ],
+        "step": "awaiting_material",
+        "draft_item": draft,
     }
 
 

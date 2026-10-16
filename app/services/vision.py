@@ -219,14 +219,46 @@ TYPE_DEFAULTS = {
 
 # ---------- Определение цвета ----------
 
+# Группы цветов для определения многоцветности
+COLOR_GROUPS: dict[str, set[str]] = {
+    "red": {"красный", "бордовый", "розовый", "терракотовый"},
+    "orange": {"оранжевый"},
+    "yellow": {"жёлтый", "горчичный"},
+    "green": {"зелёный", "оливковый", "хаки", "мятный"},
+    "blue": {"голубой", "бирюзовый", "синий", "тёмно-синий"},
+    "purple": {"фиолетовый", "сиреневый", "лиловый"},
+    "brown": {"коричневый", "тёмно-коричневый"},
+    "neutral": {
+        "белый", "кремовый", "бежевый",
+        "серый", "тёмно-серый", "светло-серый", "чёрный",
+    },
+    "unknown": {"неизвестный"},
+}
+
+
+def _color_group(name: str) -> str:
+    """К какой группе относится цвет (для многоцветности)."""
+    for group, names in COLOR_GROUPS.items():
+        if name in names:
+            return group
+    return "unknown"
+
+
 def _rgb_to_color_name(r: int, g: int, b: int) -> str:
     h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
     h_deg = h * 360
     s_pct = s * 100
     v_pct = v * 100
 
-    # 1. Ахроматические
-    if s_pct < 10:
+    # 1. Тёмные пиксели — сначала проверка на нейтральность (P2.4).
+    # Блики на чёрной ткани дают s до 35%, это не должно уводить в синий/фиолетовый.
+    if v_pct < 22 and s_pct < 35:
+        return "чёрный"
+    if v_pct < 30 and s_pct < 25:
+        return "тёмно-серый"
+
+    # 2. Ахроматические (s_pct < 12)
+    if s_pct < 12:
         if v_pct < 15:
             return "чёрный"
         if v_pct < 40:
@@ -237,34 +269,44 @@ def _rgb_to_color_name(r: int, g: int, b: int) -> str:
             return "светло-серый"
         return "белый"
 
-    # 2. Тёмные цветные — не даём упасть в чёрный
+    # 3. Холодный слабонасыщенный — серый, а не голубой
+    if s_pct < 18 and 180 <= h_deg < 260:
+        return "серый"
+
+    # 4. Тёмные цветные (v < 25, s 35+)
     if v_pct < 25:
+        if 5 <= h_deg < 60 and s_pct < 60:
+            return "тёмно-коричневый"
         if 40 <= h_deg < 180:
             return "оливковый"
-        if h_deg < 15 or h_deg >= 345:
-            return "бордовый"
         if 200 <= h_deg < 260:
             return "тёмно-синий"
+        if 260 <= h_deg < 320:
+            return "фиолетовый"
+        if h_deg < 15 or h_deg >= 345:
+            return "бордовый"
 
-    # 3. Кремовый — очень светлый + слабо насыщенный
+    # 5. Кремовый
     if v_pct > 88 and s_pct < 35:
         return "кремовый"
 
-    # 4. Бежевый — раньше коричневого
+    # 6. Бежевый (до коричневого для светлых hue)
     if 15 <= h_deg < 60 and s_pct < 45 and v_pct > 45:
         return "бежевый"
 
-    # 5. Коричневый
-    if 10 <= h_deg < 55 and v_pct < 45:
-        if v_pct < 25:
-            return "тёмно-коричневый"
-        return "коричневый"
+    # 7. Коричневый — расширенный (P2.5): hue 5-60, v < 55, s 15-60
+    if 5 <= h_deg < 60 and v_pct < 55 and s_pct >= 15:
+        return "тёмно-коричневый" if v_pct < 25 else "коричневый"
 
-    # 6. Navy
+    # 7b. Тёмно-красный со средней saturation → тоже коричневый, не красный
+    if (h_deg < 10 or h_deg >= 350) and v_pct < 50 and s_pct < 60:
+        return "тёмно-коричневый"
+
+    # 8. Navy
     if 200 <= h_deg < 260 and v_pct < 45:
         return "тёмно-синий"
 
-    # 7. Красный / бордовый / розовый
+    # 9. Красный / бордовый / розовый
     if h_deg < 15 or h_deg >= 345:
         if v_pct < 50:
             return "бордовый"
@@ -272,19 +314,17 @@ def _rgb_to_color_name(r: int, g: int, b: int) -> str:
             return "розовый"
         return "красный"
 
-    # 8. Оранжевый / терракотовый — границы сужены (было h < 40)
+    # 10. Оранжевый / терракотовый
     if h_deg < 35:
         if s_pct < 50 and v_pct < 65:
             return "терракотовый"
         return "оранжевый"
 
-    # 9. Горчичный / жёлтый — было h < 55, стало h < 70
+    # 11. Горчичный / жёлтый
     if h_deg < 70:
-        if v_pct < 60:
-            return "горчичный"
-        return "жёлтый"
+        return "горчичный" if v_pct < 60 else "жёлтый"
 
-    # 10. Зелёный / оливковый / хаки / мятный
+    # 12. Зелёный / оливковый / хаки / мятный
     if h_deg < 165:
         if v_pct < 50:
             return "оливковый"
@@ -294,23 +334,23 @@ def _rgb_to_color_name(r: int, g: int, b: int) -> str:
             return "мятный"
         return "зелёный"
 
-    # 11. Голубой / бирюзовый
+    # 13. Голубой / бирюзовый
     if h_deg < 200:
         if s_pct > 50 and v_pct < 70:
             return "бирюзовый"
         return "голубой"
 
-    # 12. Синий
+    # 14. Синий
     if h_deg < 255:
         return "синий"
 
-    # 13. Фиолетовый / сиреневый
+    # 15. Фиолетовый / сиреневый
     if h_deg < 290:
         if s_pct < 40 and v_pct > 70:
             return "сиреневый"
         return "фиолетовый"
 
-    # 14. Розовый / лиловый
+    # 16. Розовый / лиловый
     if h_deg < 345:
         if s_pct < 40 and v_pct > 70:
             return "лиловый"
@@ -321,28 +361,26 @@ def _rgb_to_color_name(r: int, g: int, b: int) -> str:
 
 def detect_color(
     image_bytes: bytes, mask: np.ndarray | None = None
-) -> tuple[str, list[str]]:
-    """Определить доминирующий цвет.
+) -> tuple[str, list[str], list[str]]:
+    """Определить цвета вещи.
 
-    Если передана mask (bool-массив размера исходного изображения,
-    True = пиксель вещи) — анализируем только пиксели вещи.
-    Иначе — старое поведение: кроп 20% по краям.
+    Возвращает:
+      - primary (str): топ-1 цвет.
+      - top3 (list[str]): до 3 цветов по убыванию веса.
+      - detected_colors (list[str]): 1–3 «основных» цвета; если 2–3 —
+        вещь считается многоцветной.
     """
     img = Image.open(BytesIO(image_bytes)).convert("RGB")
     img.thumbnail((200, 200))
 
-    # Ресайзим маску под уменьшенное изображение
     mask_resized = None
     if mask is not None and mask.size > 0:
-        mask_img = Image.fromarray(
-            (mask.astype(np.uint8)) * 255, mode="L"
-        )
+        mask_img = Image.fromarray((mask.astype(np.uint8)) * 255, mode="L")
         mask_img = mask_img.resize(img.size, Image.NEAREST)
         mask_resized = np.array(mask_img) > 127
         if not mask_resized.any():
             mask_resized = None
 
-    # Кроп 20% — только если маски нет
     if mask_resized is None:
         w, h = img.size
         margin_x = int(w * 0.20)
@@ -351,40 +389,44 @@ def detect_color(
 
     pixels = list(img.getdata())
     if not pixels:
-        return "неизвестный", []
+        return "неизвестный", [], []
 
-    # Фильтруем по маске
     if mask_resized is not None:
         flat_mask = mask_resized.flatten()
-        # Размеры могут слегка отличаться из-за thumbnail — обрезаем по min
         n = min(len(pixels), len(flat_mask))
         pixels = [p for p, m in zip(pixels[:n], flat_mask[:n]) if m]
         if len(pixels) < 100:
-            logger.info(
-                "detect_color: маска дала %d пикселей, fallback на всё фото",
-                len(pixels),
-            )
             pixels = list(img.getdata())
             mask_resized = None
 
-    # Проверка на «преимущественно чёрный»
+    # P2.4: усиленная проверка на чёрный
     dark_neutral = 0
+    total_v = 0.0
     for p in pixels:
         r, g, b = p
         _, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
-        if v < 0.22 and s < 0.25:
+        total_v += v
+        if v < 0.28 and s < 0.35:
             dark_neutral += 1
 
     dark_ratio = dark_neutral / len(pixels)
-    if dark_ratio > 0.35:
-        logger.info("detect_color: dark_ratio=%.2f → чёрный", dark_ratio)
-        return "чёрный", ["чёрный", "тёмно-серый", "тёмно-синий"]
+    avg_v = total_v / len(pixels)
+
+    if dark_ratio > 0.25 or (avg_v < 0.25 and dark_ratio > 0.15):
+        logger.info(
+            "detect_color: dark_ratio=%.2f avg_v=%.2f → чёрный",
+            dark_ratio, avg_v,
+        )
+        return "чёрный", ["чёрный", "тёмно-серый", "тёмно-синий"], ["чёрный"]
 
     colored_pixels = []
     for p in pixels:
         r, g, b = p
-        _, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
-        if v < 0.25:
+        hh, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+        h_deg = hh * 360
+        if 180 <= h_deg < 260:
+            is_colored = s >= 0.20
+        elif v < 0.25:
             is_colored = s >= 0.30
         else:
             is_colored = s >= 0.12
@@ -403,20 +445,36 @@ def detect_color(
         name_weights[name] = name_weights.get(name, 0.0) + weight
 
     if not name_weights:
-        return "неизвестный", []
+        return "неизвестный", [], []
 
     sorted_names = sorted(name_weights.items(), key=lambda x: -x[1])
     primary = sorted_names[0][0]
     top3 = [name for name, _ in sorted_names[:3]]
 
+    # P2.3: определяем многоцветность
+    total_weight = sum(w for _, w in sorted_names)
+    detected_colors = [primary]
+    seen_groups = {_color_group(primary)}
+    for name, weight in sorted_names[1:]:
+        if len(detected_colors) >= 3:
+            break
+        if total_weight > 0 and weight / total_weight < 0.15:
+            break
+        group = _color_group(name)
+        if group in seen_groups:
+            continue
+        detected_colors.append(name)
+        seen_groups.add(group)
+
     logger.info(
         "detect_color: mask=%s pixels=%d colored_ratio=%.2f "
-        "dark_ratio=%.2f primary=%s top3=%s",
+        "dark_ratio=%.2f primary=%s top3=%s detected=%s",
         "on" if mask_resized is not None else "off",
         len(pixels),
-        colored_ratio, dark_ratio, primary, top3,
+        colored_ratio, dark_ratio,
+        primary, top3, detected_colors,
     )
-    return primary, top3
+    return primary, top3, detected_colors
 
 
 # ---------- Загрузка SigLIP ----------
@@ -535,7 +593,9 @@ async def classify_clothing(image_bytes: bytes) -> dict:
     cropped_bytes, mask = crop_garment(image_bytes)
 
     # 2. Цвет — с учётом маски (только пиксели вещи)
-    color_primary, color_candidates = detect_color(cropped_bytes, mask=mask)
+    color_primary, color_candidates, detected_colors = detect_color(
+        cropped_bytes, mask=mask
+    )
 
     try:
         image = Image.open(BytesIO(cropped_bytes)).convert("RGB")
@@ -545,6 +605,7 @@ async def classify_clothing(image_bytes: bytes) -> dict:
             "ok": False,
             "color": color_primary,
             "color_candidates": color_candidates,
+            "detected_colors": detected_colors,
         }
 
     try:
@@ -555,6 +616,7 @@ async def classify_clothing(image_bytes: bytes) -> dict:
             "ok": False,
             "color": color_primary,
             "color_candidates": color_candidates,
+            "detected_colors": detected_colors,
         }
 
     if not options or options[0]["confidence"] < SIGLIP_THRESHOLD:
@@ -567,13 +629,14 @@ async def classify_clothing(image_bytes: bytes) -> dict:
             "ok": False,
             "color": color_primary,
             "color_candidates": color_candidates,
+            "detected_colors": detected_colors,
         }
 
     top = options[0]
     logger.info(
-        "Распознавание: top=%s (%.3f) category=%s color=%s, вариантов=%d",
+        "Распознавание: top=%s (%.3f) category=%s color=%s detected=%s, вариантов=%d",
         top["type"], top["confidence"], top["category"],
-        color_primary, len(options),
+        color_primary, detected_colors, len(options),
     )
 
     return {
@@ -583,6 +646,7 @@ async def classify_clothing(image_bytes: bytes) -> dict:
         "confidence": top["confidence"],
         "color": color_primary,
         "color_candidates": color_candidates,
+        "detected_colors": detected_colors,
         "warmth_level": top["warmth_level"],
         "waterproof": top["waterproof"],
         "formal_level": top["formal_level"],
