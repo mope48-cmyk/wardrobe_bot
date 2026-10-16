@@ -1,10 +1,4 @@
-"""Распознавание одежды через SigLIP. Цвет — HSV-анализ.
-
-Florence-2 убран из основного пайплайна — слишком медленный на CPU.
-Материал пользователь указывает кнопкой после распознавания типа.
-
-Модели загружаются лениво, прогреваются при старте бота.
-"""
+"""Распознавание одежды через SigLIP. Цвет — HSV-анализ с учётом маски."""
 
 import colorsys
 import hashlib
@@ -15,6 +9,7 @@ from io import BytesIO
 os.environ.setdefault("OMP_NUM_THREADS", "4")
 os.environ.setdefault("MKL_NUM_THREADS", "4")
 
+import numpy as np
 import torch
 from PIL import Image
 from transformers import AutoModel, AutoProcessor
@@ -36,7 +31,6 @@ _siglip_cache_order: list[str] = []
 def _siglip_cache_get(image_bytes: bytes) -> list[dict] | None:
     key = hashlib.md5(image_bytes).hexdigest()
     if key in _siglip_cache:
-        logger.debug("SigLIP cache hit: %s", key[:8])
         return _siglip_cache[key]
     return None
 
@@ -72,12 +66,20 @@ ENGLISH_LABELS = [
     "a dress",
     "trousers", "jeans", "shorts",
     "a skirt", "leggings", "sweatpants", "joggers",
-    "sneakers", "high-top sneakers", "running shoes",
+    # Обувь — расширенный набор, включая кожаные/минималистичные кроссовки
+    "sneakers",
+    "white leather sneakers",
+    "minimalist leather sneakers",
+    "canvas sneakers",
+    "high-top sneakers",
+    "running shoes",
     "boots", "ankle boots", "winter boots",
     "shoes", "loafers", "ballet flats", "slippers",
     "sandals", "heels",
+    # Аксессуары
     "a hat", "a beanie", "a cap", "a scarf", "gloves",
     "a belt", "a bag", "a backpack",
+    # Негативные
     "a landscape", "a room interior", "furniture",
     "food", "an animal", "a person's face",
     "a text document", "an empty background",
@@ -122,9 +124,14 @@ LABEL_MAP = {
     "leggings": ("леггинсы", "низ"),
     "sweatpants": ("спортивные штаны", "низ"),
     "joggers": ("джоггеры", "низ"),
+    # Все варианты кроссовок → один русский тип «кроссовки»
+    # (дедупликация в _classify_type_siglip оставит только топ-1)
     "sneakers": ("кроссовки", "обувь"),
-    "high-top sneakers": ("высокие кроссовки", "обувь"),
-    "running shoes": ("беговые кроссовки", "обувь"),
+    "white leather sneakers": ("кроссовки", "обувь"),
+    "minimalist leather sneakers": ("кроссовки", "обувь"),
+    "canvas sneakers": ("кроссовки", "обувь"),
+    "high-top sneakers": ("кроссовки", "обувь"),
+    "running shoes": ("кроссовки", "обувь"),
     "boots": ("ботинки", "обувь"),
     "ankle boots": ("ботильоны", "обувь"),
     "winter boots": ("зимние ботинки", "обувь"),
@@ -190,8 +197,6 @@ TYPE_DEFAULTS = {
     "спортивные штаны":    (2, False, "sport", "демисезон"),
     "джоггеры":            (2, False, "sport", "демисезон"),
     "кроссовки":           (2, False, "sport", "демисезон"),
-    "высокие кроссовки":   (2, False, "sport", "демисезон"),
-    "беговые кроссовки":   (2, False, "sport", "лето"),
     "ботинки":             (3, True,  "casual", "демисезон"),
     "ботильоны":           (3, False, "casual", "демисезон"),
     "зимние ботинки":      (4, True,  "casual", "зима"),
@@ -220,6 +225,7 @@ def _rgb_to_color_name(r: int, g: int, b: int) -> str:
     s_pct = s * 100
     v_pct = v * 100
 
+    # 1. Ахроматические
     if s_pct < 10:
         if v_pct < 15:
             return "чёрный"
@@ -227,24 +233,38 @@ def _rgb_to_color_name(r: int, g: int, b: int) -> str:
             return "тёмно-серый"
         if v_pct < 70:
             return "серый"
-        if v_pct < 90:
+        if v_pct < 85:
             return "светло-серый"
         return "белый"
 
+    # 2. Тёмные цветные — не даём упасть в чёрный
+    if v_pct < 25:
+        if 40 <= h_deg < 180:
+            return "оливковый"
+        if h_deg < 15 or h_deg >= 345:
+            return "бордовый"
+        if 200 <= h_deg < 260:
+            return "тёмно-синий"
+
+    # 3. Кремовый — очень светлый + слабо насыщенный
     if v_pct > 88 and s_pct < 35:
         return "кремовый"
 
+    # 4. Бежевый — раньше коричневого
     if 15 <= h_deg < 60 and s_pct < 45 and v_pct > 45:
         return "бежевый"
 
+    # 5. Коричневый
     if 10 <= h_deg < 55 and v_pct < 45:
         if v_pct < 25:
             return "тёмно-коричневый"
         return "коричневый"
 
+    # 6. Navy
     if 200 <= h_deg < 260 and v_pct < 45:
         return "тёмно-синий"
 
+    # 7. Красный / бордовый / розовый
     if h_deg < 15 or h_deg >= 345:
         if v_pct < 50:
             return "бордовый"
@@ -252,16 +272,19 @@ def _rgb_to_color_name(r: int, g: int, b: int) -> str:
             return "розовый"
         return "красный"
 
-    if h_deg < 40:
+    # 8. Оранжевый / терракотовый — границы сужены (было h < 40)
+    if h_deg < 35:
         if s_pct < 50 and v_pct < 65:
             return "терракотовый"
         return "оранжевый"
 
-    if h_deg < 55:
+    # 9. Горчичный / жёлтый — было h < 55, стало h < 70
+    if h_deg < 70:
         if v_pct < 60:
             return "горчичный"
         return "жёлтый"
 
+    # 10. Зелёный / оливковый / хаки / мятный
     if h_deg < 165:
         if v_pct < 50:
             return "оливковый"
@@ -271,19 +294,23 @@ def _rgb_to_color_name(r: int, g: int, b: int) -> str:
             return "мятный"
         return "зелёный"
 
+    # 11. Голубой / бирюзовый
     if h_deg < 200:
         if s_pct > 50 and v_pct < 70:
             return "бирюзовый"
         return "голубой"
 
+    # 12. Синий
     if h_deg < 255:
         return "синий"
 
+    # 13. Фиолетовый / сиреневый
     if h_deg < 290:
         if s_pct < 40 and v_pct > 70:
             return "сиреневый"
         return "фиолетовый"
 
+    # 14. Розовый / лиловый
     if h_deg < 345:
         if s_pct < 40 and v_pct > 70:
             return "лиловый"
@@ -292,19 +319,55 @@ def _rgb_to_color_name(r: int, g: int, b: int) -> str:
     return "неизвестный"
 
 
-def detect_color(image_bytes: bytes) -> tuple[str, list[str]]:
+def detect_color(
+    image_bytes: bytes, mask: np.ndarray | None = None
+) -> tuple[str, list[str]]:
+    """Определить доминирующий цвет.
+
+    Если передана mask (bool-массив размера исходного изображения,
+    True = пиксель вещи) — анализируем только пиксели вещи.
+    Иначе — старое поведение: кроп 20% по краям.
+    """
     img = Image.open(BytesIO(image_bytes)).convert("RGB")
     img.thumbnail((200, 200))
 
-    w, h = img.size
-    margin_x = int(w * 0.20)
-    margin_y = int(h * 0.20)
-    img = img.crop((margin_x, margin_y, w - margin_x, h - margin_y))
+    # Ресайзим маску под уменьшенное изображение
+    mask_resized = None
+    if mask is not None and mask.size > 0:
+        mask_img = Image.fromarray(
+            (mask.astype(np.uint8)) * 255, mode="L"
+        )
+        mask_img = mask_img.resize(img.size, Image.NEAREST)
+        mask_resized = np.array(mask_img) > 127
+        if not mask_resized.any():
+            mask_resized = None
+
+    # Кроп 20% — только если маски нет
+    if mask_resized is None:
+        w, h = img.size
+        margin_x = int(w * 0.20)
+        margin_y = int(h * 0.20)
+        img = img.crop((margin_x, margin_y, w - margin_x, h - margin_y))
 
     pixels = list(img.getdata())
     if not pixels:
         return "неизвестный", []
 
+    # Фильтруем по маске
+    if mask_resized is not None:
+        flat_mask = mask_resized.flatten()
+        # Размеры могут слегка отличаться из-за thumbnail — обрезаем по min
+        n = min(len(pixels), len(flat_mask))
+        pixels = [p for p, m in zip(pixels[:n], flat_mask[:n]) if m]
+        if len(pixels) < 100:
+            logger.info(
+                "detect_color: маска дала %d пикселей, fallback на всё фото",
+                len(pixels),
+            )
+            pixels = list(img.getdata())
+            mask_resized = None
+
+    # Проверка на «преимущественно чёрный»
     dark_neutral = 0
     for p in pixels:
         r, g, b = p
@@ -347,7 +410,10 @@ def detect_color(image_bytes: bytes) -> tuple[str, list[str]]:
     top3 = [name for name, _ in sorted_names[:3]]
 
     logger.info(
-        "detect_color: colored_ratio=%.2f dark_ratio=%.2f primary=%s top3=%s",
+        "detect_color: mask=%s pixels=%d colored_ratio=%.2f "
+        "dark_ratio=%.2f primary=%s top3=%s",
+        "on" if mask_resized is not None else "off",
+        len(pixels),
         colored_ratio, dark_ratio, primary, top3,
     )
     return primary, top3
@@ -464,12 +530,12 @@ def warmup() -> None:
 # ---------- Главная функция ----------
 
 async def classify_clothing(image_bytes: bytes) -> dict:
-    """Распознать тип (SigLIP) и цвет (HSV), предварительно вырезав вещь."""
-    # 1. Сегментация: обрезаем по bbox вещи
-    cropped_bytes = crop_garment(image_bytes)
+    """Распознать тип (SigLIP) и цвет (HSV) с учётом маски сегментации."""
+    # 1. Сегментация: обрезаем + получаем маску
+    cropped_bytes, mask = crop_garment(image_bytes)
 
-    # 2. Цвет по обрезанному изображению
-    color_primary, color_candidates = detect_color(cropped_bytes)
+    # 2. Цвет — с учётом маски (только пиксели вещи)
+    color_primary, color_candidates = detect_color(cropped_bytes, mask=mask)
 
     try:
         image = Image.open(BytesIO(cropped_bytes)).convert("RGB")

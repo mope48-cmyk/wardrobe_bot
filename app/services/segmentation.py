@@ -1,12 +1,4 @@
-"""Сегментация одежды — вырезает главную вещь из фона через SegFormer.
-
-Алгоритм:
-  1. Модель выдаёт попиксельную маску классов.
-  2. Оставляем только классы одежды (по id2label).
-  3. Находим связные компоненты через BFS (без scipy).
-  4. Берём компоненту с наибольшей площадью.
-  5. Обрезаем по её bbox с отступом.
-"""
+"""Сегментация одежды — вырезает главную вещь из фона через SegFormer."""
 
 import logging
 from collections import deque
@@ -66,7 +58,6 @@ def _get_model():
 
 
 def _dilate_mask(mask: np.ndarray, radius: int) -> np.ndarray:
-    """Морфологическая дилатация без scipy — через np.roll."""
     result = mask.copy()
     step = max(1, radius // 3)
     for dy in range(-radius, radius + 1, step):
@@ -79,7 +70,6 @@ def _dilate_mask(mask: np.ndarray, radius: int) -> np.ndarray:
 
 
 def _largest_component_bbox(mask: np.ndarray) -> tuple[int, int, int, int] | None:
-    """Найти bbox самой крупной связной компоненты через BFS (без scipy)."""
     h, w = mask.shape
     dilated = _dilate_mask(mask, DILATION_RADIUS)
 
@@ -120,7 +110,6 @@ def _largest_component_bbox(mask: np.ndarray) -> tuple[int, int, int, int] | Non
     if best_bbox is None:
         return None
 
-    # Уточняем bbox по оригинальной маске
     y_min, x_min, y_max, x_max = best_bbox
     sub_mask = mask[y_min:y_max + 1, x_min:x_max + 1]
     ys, xs = np.where(sub_mask)
@@ -135,8 +124,14 @@ def _largest_component_bbox(mask: np.ndarray) -> tuple[int, int, int, int] | Non
     )
 
 
-def crop_garment(image_bytes: bytes) -> bytes:
-    """Найти главную вещь на фото и вернуть обрезанное изображение."""
+def crop_garment(image_bytes: bytes) -> tuple[bytes, np.ndarray | None]:
+    """Вырезать главную вещь.
+
+    Возвращает (cropped_image_bytes, mask):
+      - cropped_image_bytes — байты JPEG обрезанного изображения;
+      - mask — bool-массив (H, W) размера обрезанного изображения,
+        где True — пиксель вещи. None — если сегментация не сработала.
+    """
     try:
         image = Image.open(BytesIO(image_bytes)).convert("RGB")
         original_size = image.size
@@ -144,8 +139,8 @@ def crop_garment(image_bytes: bytes) -> bytes:
 
         model, processor, garment_ids = _get_model()
         if not garment_ids:
-            logger.info("Сегментация: классы одежды не найдены, оставляю оригинал")
-            return image_bytes
+            logger.info("Сегментация: классы одежды не найдены, оригинал")
+            return image_bytes, None
 
         inputs = processor(images=image, return_tensors="pt")
         with torch.no_grad():
@@ -160,13 +155,13 @@ def crop_garment(image_bytes: bytes) -> bytes:
 
         garment_mask = np.isin(mask, list(garment_ids))
         if not garment_mask.any():
-            logger.info("Сегментация: вещь не найдена, оставляю оригинал")
-            return image_bytes
+            logger.info("Сегментация: вещь не найдена, оригинал")
+            return image_bytes, None
 
         bbox = _largest_component_bbox(garment_mask)
         if bbox is None:
             logger.info("Сегментация: не удалось выделить компоненту, оригинал")
-            return image_bytes
+            return image_bytes, None
 
         y_min, x_min, y_max, x_max = bbox
 
@@ -186,9 +181,11 @@ def crop_garment(image_bytes: bytes) -> bytes:
                 "Сегментация: главная вещь %.0f%% кадра, оригинал",
                 area_ratio * 100,
             )
-            return image_bytes
+            return image_bytes, None
 
         cropped = image.crop((x_min, y_min, x_max, y_max))
+        crop_mask = garment_mask[y_min:y_max, x_min:x_max]
+
         buf = BytesIO()
         cropped.save(buf, format="JPEG", quality=92)
 
@@ -196,11 +193,11 @@ def crop_garment(image_bytes: bytes) -> bytes:
             "Сегментация: %s → %s (главная вещь %.0f%% кадра)",
             original_size, cropped.size, area_ratio * 100,
         )
-        return buf.getvalue()
+        return buf.getvalue(), crop_mask
 
     except Exception:
         logger.exception("Ошибка сегментации, использую оригинал")
-        return image_bytes
+        return image_bytes, None
 
 
 def warmup_segmentation() -> None:
