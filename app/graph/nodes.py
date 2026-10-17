@@ -1970,7 +1970,10 @@ async def outfit_occasion_node(state: BotState) -> dict:
     if len(caption) > 1024:
         caption = caption[:1020] + "…"
 
-    photo_ids = [item.photo_file_id for item in result.items]
+        photo_ids = [
+        item.generated_photo_file_id or item.photo_file_id
+        for item in result.items
+    ]
 
     return {
         "messages": [
