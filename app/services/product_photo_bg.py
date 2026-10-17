@@ -94,6 +94,34 @@ def _card_keyboard(index: int, total: int) -> InlineKeyboardMarkup:
     ])
 
 
+async def _build_card_caption(
+    item_id: int, card_index: int, card_total: int
+) -> str:
+    """Собрать caption карточки вещи для обновления и уведомления.
+
+    Возвращает пустую строку, если вещь не найдена.
+    """
+    item = await get_item(item_id)
+    if item is None:
+        return ""
+
+    colors_str = ", ".join(get_colors(item)) or "—"
+    material_line = (
+        f"материал: {item.material}\n" if item.material else ""
+    )
+    waterproof_mark = "💧 " if item.waterproof else ""
+
+    return (
+        f"📋 Вещь <b>{card_index + 1}</b> из <b>{card_total}</b>\n\n"
+        f"<b>{item.category} / {item.type}</b>\n"
+        f"цвета: {colors_str}\n"
+        f"{material_line}"
+        f"{waterproof_mark}тепло: {item.warmth_level}/5, "
+        f"стиль: {item.formal_level}, сезон: {item.season}\n\n"
+        f"📸 <i>фото из каталога</i>"
+    )
+
+
 async def generate_product_photo_bg(
     *,
     bot: Bot,
@@ -126,13 +154,22 @@ async def generate_product_photo_bg(
             make_product_photo, image_bytes, category
         )
 
-        # 3. Загружаем в Telegram → получаем file_id
+        # 3. ВРЕМЕННО загружаем в Telegram, чтобы получить file_id.
+        #    После получения file_id сообщение удалим.
         sent = await bot.send_photo(
             chat_id=chat_id,
             photo=BufferedInputFile(product_bytes, filename="catalog.jpg"),
-            caption=f"✅ Фото для каталога готово\n• {category} / {item_type}",
+            caption="⏳ Загрузка фото…",
         )
         new_file_id = sent.photo[-1].file_id if sent.photo else None
+
+        try:
+            await bot.delete_message(
+                chat_id=chat_id, message_id=sent.message_id
+            )
+        except Exception:
+            logger.exception("Не удалось удалить временное сообщение с фото")
+
         if not new_file_id:
             logger.error("Telegram не вернул file_id после send_photo")
             return
@@ -156,26 +193,9 @@ async def generate_product_photo_bg(
         # 5. Обновляем карточку, только если пользователь всё ещё на ней
         if card_message_id and _current_card.get(chat_id) == item_id:
             try:
-                item = await get_item(item_id)
-                if item is None:
-                    return
-
-                colors_str = ", ".join(get_colors(item)) or "—"
-                material_line = (
-                    f"материал: {item.material}\n" if item.material else ""
+                card_caption = await _build_card_caption(
+                    item_id, card_index, card_total
                 )
-                waterproof_mark = "💧 " if item.waterproof else ""
-
-                card_caption = (
-                    f"📋 Вещь <b>{card_index + 1}</b> из <b>{card_total}</b>\n\n"
-                    f"<b>{item.category} / {item.type}</b>\n"
-                    f"цвета: {colors_str}\n"
-                    f"{material_line}"
-                    f"{waterproof_mark}тепло: {item.warmth_level}/5, "
-                    f"стиль: {item.formal_level}, сезон: {item.season}\n\n"
-                    f"📸 <i>фото из каталога</i>"
-                )
-
                 await bot.edit_message_media(
                     chat_id=chat_id,
                     message_id=card_message_id,
@@ -194,6 +214,23 @@ async def generate_product_photo_bg(
                 )
             except Exception:
                 logger.exception("Ошибка обновления карточки")
+
+        # 6. ТЕКСТОВОЕ уведомление с caption карточки (без фото)
+        try:
+            card_caption = await _build_card_caption(
+                item_id, card_index, card_total
+            )
+            notification_text = (
+                "✅ <b>Фото для каталога готово!</b>\n\n"
+                f"{card_caption}"
+            )
+            await bot.send_message(
+                chat_id=chat_id,
+                text=notification_text,
+                reply_markup=_card_keyboard(card_index, card_total),
+            )
+        except Exception:
+            logger.exception("Не удалось отправить текстовое уведомление")
 
     except Exception:
         logger.exception("Ошибка фоновой генерации фото")
