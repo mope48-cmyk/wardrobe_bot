@@ -15,4 +15,4 @@ rembg
 onnxruntime
 scipy
 pillow>=10.0.0
-langchain-openai
+langchain-gigachat
