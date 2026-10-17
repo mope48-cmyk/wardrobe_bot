@@ -16,7 +16,7 @@ if settings.GIGACHAT_CREDENTIALS:
     _llm = GigaChat(
         credentials=settings.GIGACHAT_CREDENTIALS,
         scope="GIGACHAT_API_PERS",
-        model="GigaChat",
+        model="GigaChat-2",
         ca_bundle_file="/app/certs/russian_trusted_root_ca.pem",
         temperature=0.3,
         max_tokens=500,
