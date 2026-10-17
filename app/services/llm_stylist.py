@@ -25,7 +25,7 @@ else:
     logger.warning("GIGACHAT_CREDENTIALS не задан — LLM-селектор отключён")
 
 
-SYSTEM_PROMPT = """Ты — опытный стилист. Тебе дан гардероб пользователя (у каждой вещи есть ID, категория, тип, цвета, материал, warmth, waterproof, formal, сезон, слой) и текущая погода с поводом.
+SYSTEM_PROMPT = """Ты — опытный стилист. Тебе дан гардероб пользователя (каждая вещь имеет ID, категорию, тип, свойства) и текущая погода с поводом.
 
 Твоя задача — собрать ОДИН готовый комплект.
 
@@ -34,15 +34,14 @@ SYSTEM_PROMPT = """Ты — опытный стилист. Тебе дан га�
    - хотя бы одна вещь категории «верх»
    - хотя бы одна вещь категории «низ» (либо одно платье)
    - хотя бы одна вещь категории «обувь»
-   Если какой-то из этих категорий НЕТ в гардеробе — не включай её, но и не выдумывай ID.
-2. При холоде (<10°C) добавь второй слой (mid) или верхний слой (outer), если они есть в гардеробе.
+2. Внимательно смотри на температуру! Если на улице +30°C (жара), не выбирай пуховики и шерстяные свитера. Если -10°C (мороз), не выбирай шорты и майки.
 3. При осадках выбирай верх и обувь с waterproof=true.
 4. Повод: работа/встреча → business, прогулка → casual, спорт → sport.
 
 ВАЖНЕЙШЕЕ ПРАВИЛО ДЛЯ ОБЪЯСНЕНИЯ:
 В поле `explanation` опиши ТОЛЬКО те вещи, ID которых ты указал в `item_ids`. 
-Если ты выбрал водолазку, джинсы и ботинки, напиши именно про них. 
-КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО упоминать в тексте вещи, которых нет в списке выбранных (например, не пиши про рубашку или свитер, если ты их не выбрал).
+Называй вещи ИМЕННО ТАК, как они написаны в списке (например, если написано «ботинки», не называй их «кроссовками»).
+КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО упоминать в тексте вещи, которых нет в списке выбранных.
 
 ФОРМАТ ОТВЕТА — СТРОГО JSON без markdown, без текста до и после:
 {"item_ids": [49, 51, 58], "explanation": "На улице прохладно, поэтому я выбрал тёплую водолазку. Джинсы и ботинки — отличный выбор для прогулки."}
@@ -65,33 +64,42 @@ async def select_outfit_with_llm(
     wind = weather.get("wind_speed", 0)
     has_precip = weather.get("has_precipitation", False)
 
-    items_lines = []
+    # Группируем вещи по категориям для лучшего понимания LLM
+    by_cat = {"верх": [], "низ": [], "обувь": [], "аксессуар": []}
     for item in items:
-        try:
-            colors_list = json.loads(item.colors) if item.colors else []
-        except Exception:
-            colors_list = []
-        colors_str = ", ".join(colors_list) if colors_list else "—"
+        if item.category in by_cat:
+            try:
+                colors_list = json.loads(item.colors) if item.colors else []
+            except Exception:
+                colors_list = []
+            colors_str = ", ".join(colors_list) if colors_list else "—"
 
-        items_lines.append(
-            f"id={item.id} | {item.category}/{item.type} | "
-            f"цвета: {colors_str} | материал: {item.material or '—'} | "
-            f"тепло: {item.warmth_level}/5 | "
-            f"waterproof: {'да' if item.waterproof else 'нет'} | "
-            f"стиль: {item.formal_level} | сезон: {item.season} | "
-            f"слой: {getattr(item, 'layer', 'base')}"
-        )
+            line = (
+                f"id={item.id} | {item.type} | цвета: {colors_str} | "
+                f"материал: {item.material or '—'} | тепло: {item.warmth_level}/5 | "
+                f"waterproof: {'да' if item.waterproof else 'нет'} | "
+                f"стиль: {item.formal_level} | сезон: {item.season} | "
+                f"слой: {getattr(item, 'layer', 'base')}"
+            )
+            by_cat[item.category].append(line)
 
-    items_text = "\n".join(items_lines)
+    items_text = ""
+    for cat, lines in by_cat.items():
+        if lines:
+            items_text += f"\n--- {cat.upper()} ---\n" + "\n".join(lines) + "\n"
+
     precip_note = ", осадки" if has_precip else ""
 
     user_prompt = (
-        f"Погода: {desc}, ощущается как {temp:.0f}°C, "
-        f"ветер {wind:.0f} м/с{precip_note}.\n"
+        f"Погода: {desc}, ощущается как {temp:.0f}°C, ветер {wind:.0f} м/с{precip_note}.\n"
         f"Повод: {occasion}.\n\n"
-        f"Гардероб ({len(items)} вещей):\n{items_text}\n\n"
+        f"Доступная одежда в гардеробе:\n{items_text}\n\n"
+        "Внимательно сравни вещи в каждой категории. Выбери наиболее подходящие под погоду.\n"
         "Верни JSON с выбранными ID и объяснением."
     )
+
+    # Логируем, чтобы видеть, что реально уходит в LLM
+    logger.info("Отправляем в LLM %d вещей", len(items))
 
     try:
         response = await _llm.ainvoke([
