@@ -25,6 +25,28 @@ from app.services.telegram_files import download_photo_by_file_id
 
 logger = logging.getLogger(__name__)
 
+COLOR_EMOJI: dict[str, str] = {
+    "красный": "🔴", "бордовый": "🔴", "розовый": "🩷",
+    "оранжевый": "🟠", "терракотовый": "🟠",
+    "жёлтый": "🟡", "горчичный": "🟡",
+    "зелёный": "🟢", "оливковый": "🟢", "хаки": "🟢", "мятный": "🟢",
+    "голубой": "🔵", "бирюзовый": "🔵",
+    "синий": "🔵", "тёмно-синий": "🔵",
+    "фиолетовый": "🟣", "сиреневый": "🟣", "лиловый": "🟣",
+    "коричневый": "🟤", "тёмно-коричневый": "🟤",
+    "белый": "⚪", "кремовый": "⚪", "бежевый": "⚪",
+    "чёрный": "⚫",
+    "серый": "🩶", "тёмно-серый": "🩶", "светло-серый": "🩶",
+}
+
+
+def _format_colors(item_colors: list[str]) -> str:
+    if not item_colors:
+        return "—"
+    return ", ".join(
+        f"{COLOR_EMOJI.get(c.lower(), '🎨')} {c}" for c in item_colors
+    )
+
 
 # In-memory: item_id, для которых идёт генерация сейчас.
 _generating: set[int] = set()
@@ -105,7 +127,7 @@ async def _build_card_caption(
     if item is None:
         return ""
 
-    colors_str = ", ".join(get_colors(item)) or "—"
+    colors_str = _format_colors(get_colors(item))
     material_line = (
         f"материал: {item.material}\n" if item.material else ""
     )

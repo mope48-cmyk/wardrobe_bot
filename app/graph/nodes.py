@@ -1381,6 +1381,19 @@ async def add_photo_node(state: BotState) -> dict:
             lines.append(f"{i}. {opt['type']} — {pct}%")
 
     lines.append("")
+
+    detected = draft.get("predicted_colors") or [result["color"]]
+    if len(detected) > 1:
+        colors_str = ", ".join(
+            _format_color_with_emoji(c) for c in detected
+        )
+        lines.append(f"Цвета: {colors_str}.")
+    elif len(detected) == 1:
+        lines.append(f"Цвет: {_format_color_with_emoji(detected[0])}.")
+    else:
+        lines.append("Цвет: —")
+
+    lines.append("")
     lines.append(
         "Выберите тип кнопкой ниже. Если ничего не подходит — нажмите "
         "<b>другое</b> и введите вручную."
