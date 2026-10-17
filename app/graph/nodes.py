@@ -15,6 +15,7 @@ from app.db.repository import (
     update_item_field,
 )
 from app.graph.state import BotState
+from app.services.llm_stylist import select_outfit_with_llm
 from app.services.outfit import select_outfit
 from app.services.product_photo_bg import (
     is_generating,
@@ -1747,6 +1748,52 @@ async def add_material_text_node(state: BotState) -> dict:
 VALID_OCCASIONS = {"работа", "прогулка", "спорт", "встреча", "другое"}
 
 
+def _validate_llm_selection(item_ids: list[int], items: list) -> list | None:
+    """Проверить, что LLM выбрала валидный комплект.
+
+    Возвращает список вещей или None, если выбор невалиден.
+    Учитываем, какие категории вообще есть в гардеробе: если обуви
+    в гардеробе нет, LLM не обязана её включать.
+    """
+    by_id = {item.id: item for item in items}
+
+    selected: list = []
+    seen: set[int] = set()
+    for iid in item_ids:
+        if iid in seen:
+            continue
+        if iid in by_id:
+            selected.append(by_id[iid])
+            seen.add(iid)
+
+    if not selected:
+        return None
+
+    cats = {item.category for item in selected}
+    wardrobe_cats = {item.category for item in items}
+
+    has_top = "верх" in cats
+    has_bottom = "низ" in cats
+    has_shoes = "обувь" in cats
+    has_dress = any(
+        item.type.lower() in ("платье", "сарафан", "комбинезон")
+        for item in selected
+    )
+
+    # Проверяем только те категории, которые есть в гардеробе
+    if "верх" in wardrobe_cats and not has_top:
+        logger.info("LLM-валидация: нет верха (хотя он есть в гардеробе)")
+        return None
+    if "низ" in wardrobe_cats and not has_bottom and not has_dress:
+        logger.info("LLM-валидация: нет низа (и не платье)")
+        return None
+    if "обувь" in wardrobe_cats and not has_shoes:
+        logger.info("LLM-валидация: нет обуви (хотя она есть в гардеробе)")
+        return None
+
+    return selected
+
+
 async def outfit_start_node(state: BotState) -> dict:
     return {
         "messages": [
@@ -1816,7 +1863,7 @@ async def outfit_location_node(state: BotState) -> dict:
 
 
 async def outfit_occasion_node(state: BotState) -> dict:
-    """Обработка повода: погода, подбор, отправка результата."""
+    """Обработка повода: погода, подбор (LLM + fallback), отправка."""
     text = (state.get("input_text") or "").strip().lower()
 
     if text not in VALID_OCCASIONS:
@@ -1878,8 +1925,53 @@ async def outfit_occasion_node(state: BotState) -> dict:
             "weather": weather,
         }
 
-    result = select_outfit(list(items), weather, text)
+    # --- 1. Пытаемся выбрать комплект через LLM ---
+    llm_selection = await select_outfit_with_llm(weather, text, list(items))
 
+    selected_items = None
+    llm_explanation = ""
+    strict_cats: set[str] = set()
+    relaxed_cats: set[str] = set()
+    missing_cats: set[str] = set()
+
+    if llm_selection:
+        validated = _validate_llm_selection(
+            llm_selection["item_ids"], items
+        )
+        if validated:
+            selected_items = validated
+            llm_explanation = llm_selection["explanation"]
+            logger.info(
+                "LLM выбрала комплект: ids=%s, объяснение=%r",
+                llm_selection["item_ids"], llm_explanation[:120],
+            )
+
+    # --- 2. Fallback на детерминированный алгоритм ---
+    if selected_items is None:
+        result = select_outfit(list(items), weather, text)
+        selected_items = result.items
+        strict_cats = result.strict_categories
+        relaxed_cats = result.relaxed_categories
+        missing_cats = result.missing_categories
+        logger.info(
+            "Fallback на select_outfit: %d вещей", len(selected_items),
+        )
+
+    if not selected_items:
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        "Не удалось собрать комплект. Добавьте вещи через /add."
+                    ),
+                    additional_kwargs=_kb(MENU_KEYBOARD),
+                )
+            ],
+            "step": None, "intent": None, "location": None,
+            "weather": weather,
+        }
+
+    # --- 3. Заголовок с погодой ---
     city_str = f" ({loc['city']})" if loc.get("city") else ""
     temp = weather["temp"]
     feels_like = weather.get("feels_like", temp)
@@ -1894,26 +1986,15 @@ async def outfit_occasion_node(state: BotState) -> dict:
 
     header = f"{weather_line}\n<b>Повод:</b> {text}"
 
-    if not result.items:
-        # Единственный случай, когда не можем помочь: гардероб пуст
-        # (сюда не попадём, т.к. выше уже проверили items, но на всякий случай).
-        return {
-            "messages": [
-                AIMessage(
-                    content=(
-                        f"{header}\n\n"
-                        "Не удалось собрать комплект. Добавьте вещи через /add."
-                    ),
-                    additional_kwargs=_kb(MENU_KEYBOARD),
-                )
-            ],
-            "step": None, "intent": None, "location": None,
-            "weather": weather,
-        }
+    # --- 4. Формируем текст: объяснение LLM или предупреждения ---
+    lines = [header]
+    if llm_explanation:
+        lines.append("")
+        lines.append(f"💬 <i>{esc(llm_explanation)}</i>")
+    lines.append("")
 
-    # Группируем по категориям для структурированного вывода
     by_cat: dict[str, list] = {}
-    for item in result.items:
+    for item in selected_items:
         by_cat.setdefault(item.category, []).append(item)
 
     cat_labels = {
@@ -1924,7 +2005,6 @@ async def outfit_occasion_node(state: BotState) -> dict:
     }
     cat_order = ["верх", "низ", "обувь", "аксессуар"]
 
-    lines = [header, ""]
     for cat in cat_order:
         cat_items = by_cat.get(cat)
         if not cat_items:
@@ -1932,7 +2012,7 @@ async def outfit_occasion_node(state: BotState) -> dict:
         lines.append(f"<b>{cat_labels[cat]}:</b>")
         for item in cat_items:
             wp = " 💧" if item.waterproof else ""
-            mark = " ⚠️" if cat in result.relaxed_categories else ""
+            mark = " ⚠️" if cat in relaxed_cats else ""
             mat = f" ({item.material})" if item.material else ""
             lines.append(
                 f"• {item.type}{mat} — тепло {item.warmth_level}/5, "
@@ -1940,41 +2020,37 @@ async def outfit_occasion_node(state: BotState) -> dict:
             )
         lines.append("")
 
-    # Предупреждения
-    warnings: list[str] = []
-    if result.relaxed_categories:
-        relaxed_names = ", ".join(
-            {"верх": "верх", "низ": "низ", "обувь": "обувь"}
-            .get(c, c) for c in sorted(result.relaxed_categories)
-        )
-        warnings.append(
-            f"⚠️ Для категорий ({relaxed_names}) нет вещей, идеально "
-            "подходящих по погоде — показаны ближайшие варианты. "
-            "Возможно, будет некомфортно."
-        )
-    if result.missing_categories:
-        missing_names = ", ".join(
-            {"верх": "верх", "низ": "низ", "обувь": "обувь"}
-            .get(c, c) for c in sorted(result.missing_categories)
-        )
-        warnings.append(
-            f"ℹ️ В гардеробе нет вещей категорий: {missing_names}. "
-            "Добавьте их через /add."
-        )
-
-    if warnings:
-        lines.append("")
-        lines.extend(warnings)
+    # Предупреждения — только при fallback (LLM сама знает, что делает)
+    if not llm_explanation:
+        warnings: list[str] = []
+        if relaxed_cats:
+            relaxed_names = ", ".join(
+                {"верх": "верх", "низ": "низ", "обувь": "обувь"}
+                .get(c, c) for c in sorted(relaxed_cats)
+            )
+            warnings.append(
+                f"⚠️ Для категорий ({relaxed_names}) нет вещей, "
+                "идеально подходящих по погоде — показаны ближайшие."
+            )
+        if missing_cats:
+            missing_names = ", ".join(
+                {"верх": "верх", "низ": "низ", "обувь": "обувь"}
+                .get(c, c) for c in sorted(missing_cats)
+            )
+            warnings.append(
+                f"ℹ️ В гардеробе нет вещей категорий: {missing_names}."
+            )
+        if warnings:
+            lines.append("")
+            lines.extend(warnings)
 
     caption = "\n".join(lines).rstrip()
     if len(caption) > 1024:
         caption = caption[:1020] + "…"
 
-    # Блок photo_ids — ВНЕ условия if, чтобы выполнялся всегда.
-    # Используем сгенерированное фото, если оно есть, иначе оригинал.
     photo_ids = [
         item.generated_photo_file_id or item.photo_file_id
-        for item in result.items
+        for item in selected_items
     ]
 
     logger.info("Outfit photos: %s", photo_ids)
