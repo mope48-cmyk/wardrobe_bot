@@ -38,6 +38,7 @@ STEP_KEYBOARDS: dict[str, list[list[str]]] = {
     "awaiting_type": [["❌ Отмена"]],
     "awaiting_color": [["✅ Подтвердить", "🔄 Изменить"], ["❌ Отмена"]],
     "awaiting_color_text": [["❌ Отмена"]],
+    "awaiting_layer": [["Базовый", "Средний"], ["Верхний"], ["❌ Отмена"]],
     "awaiting_warmth": [["1", "2", "3"], ["4", "5"], ["❌ Отмена"]],
     "awaiting_waterproof": [["да", "нет"], ["❌ Отмена"]],
     "awaiting_formal": [["casual", "business", "sport"], ["❌ Отмена"]],
@@ -128,6 +129,7 @@ async def _persist_item(state: BotState, draft: dict) -> dict:
             waterproof=draft["waterproof"],
             formal_level=draft["formal_level"],
             season=draft["season"],
+            layer=draft.get("layer", "base"),
         )
     except Exception as e:
         logger.exception("Ошибка сохранения вещи")
@@ -1190,6 +1192,7 @@ VALID_CATEGORIES = {"верх", "низ", "обувь", "аксессуар"}
 VALID_FORMAL = {"casual", "business", "sport"}
 VALID_SEASON = {"лето", "демисезон", "зима", "универсальная"}
 VALID_MATERIALS = {"хлопок", "шерсть", "кожа", "деним", "трикотаж", "синтетика"}
+VALID_LAYERS = {"базовый": "base", "средний": "mid", "верхний": "outer"}
 
 STEP_TO_FIELD = {
     "awaiting_category": "category",
@@ -1201,6 +1204,7 @@ STEP_TO_FIELD = {
     "awaiting_formal": "formal_level",
     "awaiting_season": "season",
     "awaiting_material": "material",
+    "awaiting_layer": "layer",
 }
 
 NEXT_STEP = {
@@ -1297,6 +1301,11 @@ def _validate_answer(step: str, text: str) -> tuple[bool, object, str]:
             return True, lower, ""
         return False, None, "Выберите материал кнопкой из списка."
 
+    if step == "awaiting_layer":
+        if lower in VALID_LAYERS:
+            return True, VALID_LAYERS[lower], ""
+        return False, None, "Выберите: базовый, средний или верхний."
+
     return False, None, "Неизвестный шаг."
 
 
@@ -1369,6 +1378,7 @@ async def add_photo_node(state: BotState) -> dict:
     draft["predicted_colors"] = (
         result.get("detected_colors") or [result["color"]]
     )
+    draft["predicted_layer"] = result.get("layer", "base")
     draft["confidence"] = result["confidence"]
 
     # Формируем список вариантов в тексте
@@ -1461,6 +1471,7 @@ async def add_confirm_category_node(state: BotState) -> dict:
             draft["waterproof"] = opt["waterproof"]
             draft["formal_level"] = opt["formal_level"]
             draft["season"] = opt["season"]
+            draft["predicted_layer"] = opt.get("layer", "base")
             return _go_to_color(draft)
 
     # 2. "да" → топ-1
@@ -1473,6 +1484,7 @@ async def add_confirm_category_node(state: BotState) -> dict:
             draft["waterproof"] = opt["waterproof"]
             draft["formal_level"] = opt["formal_level"]
             draft["season"] = opt["season"]
+            draft["predicted_layer"] = opt.get("layer", "base")
             return _go_to_color(draft)
 
     # 3. "другое" / "нет" → ручной путь
@@ -1505,15 +1517,13 @@ async def add_confirm_category_node(state: BotState) -> dict:
     }
 
 
-async def add_color_node(state: BotState) -> dict:
-    """Обработка шага выбора цвета с предсказаниями."""
-    text = (state.get("input_text") or "").strip().lower()
-    draft = dict(state.get("draft_item") or {})
-    predicted = draft.get("predicted_colors") or []
+async def _maybe_ask_layer(state: BotState, draft: dict) -> dict:
+    """Спросить слой, если это верх; иначе — сразу к материалу."""
+    category = draft.get("category", "")
+    layer = draft.get("predicted_layer", "base")
 
-    # Подтверждение предсказанных цветов
-    if text in ("✅ подтвердить", "подтвердить", "да", "yes", "ok", "+"):
-        draft["colors"] = predicted or []
+    if category in ("низ", "обувь", "аксессуар"):
+        draft["layer"] = "none"
         return {
             "messages": [
                 AIMessage(
@@ -1524,6 +1534,66 @@ async def add_color_node(state: BotState) -> dict:
             "step": "awaiting_material",
             "draft_item": draft,
         }
+
+    layer_ru = {
+        "base": "базовый",
+        "mid": "средний",
+        "outer": "верхний",
+    }.get(layer, "базовый")
+    return {
+        "messages": [
+            AIMessage(
+                content=(
+                    "К какому слою относится вещь?\n"
+                    f"Предположительно: <b>{layer_ru}</b>.\n\n"
+                    "Выберите слой кнопкой:"
+                ),
+                additional_kwargs=_kb_for_step("awaiting_layer"),
+            )
+        ],
+        "step": "awaiting_layer",
+        "draft_item": draft,
+    }
+
+
+async def add_layer_node(state: BotState) -> dict:
+    """Обработка выбора слоя (только для категории «верх»)."""
+    text = (state.get("input_text") or "").strip().lower()
+    draft = dict(state.get("draft_item") or {})
+
+    if text not in VALID_LAYERS:
+        return {
+            "messages": [
+                AIMessage(
+                    content="Выберите: базовый, средний или верхний.",
+                    additional_kwargs=_kb_for_step("awaiting_layer"),
+                )
+            ]
+        }
+
+    draft["layer"] = VALID_LAYERS[text]
+    return {
+        "messages": [
+            AIMessage(
+                content="Из чего сделана вещь? Выберите материал:",
+                additional_kwargs=_kb_for_step("awaiting_material"),
+            )
+        ],
+        "step": "awaiting_material",
+        "draft_item": draft,
+    }
+
+
+async def add_color_node(state: BotState) -> dict:
+    """Обработка шага выбора цвета с предсказаниями."""
+    text = (state.get("input_text") or "").strip().lower()
+    draft = dict(state.get("draft_item") or {})
+    predicted = draft.get("predicted_colors") or []
+
+    # Подтверждение предсказанных цветов
+    if text in ("✅ подтвердить", "подтвердить", "да", "yes", "ok", "+"):
+        draft["colors"] = predicted or []
+        return await _maybe_ask_layer(state, draft)
 
     # Ручной ввод
     if text in ("🔄 изменить", "изменить", "нет", "no", "-"):
@@ -1545,16 +1615,7 @@ async def add_color_node(state: BotState) -> dict:
     valid, value, error = _validate_answer("awaiting_color", text)
     if valid:
         draft["colors"] = value
-        return {
-            "messages": [
-                AIMessage(
-                    content="Из чего сделана вещь? Выберите материал:",
-                    additional_kwargs=_kb_for_step("awaiting_material"),
-                )
-            ],
-            "step": "awaiting_material",
-            "draft_item": draft,
-        }
+        return await _maybe_ask_layer(state, draft)
 
     return {
         "messages": [
@@ -1579,16 +1640,7 @@ async def add_color_text_node(state: BotState) -> dict:
         return {"messages": [AIMessage(content=error)]}
 
     draft["colors"] = value
-    return {
-        "messages": [
-            AIMessage(
-                content="Из чего сделана вещь? Выберите материал:",
-                additional_kwargs=_kb_for_step("awaiting_material"),
-            )
-        ],
-        "step": "awaiting_material",
-        "draft_item": draft,
-    }
+    return await _maybe_ask_layer(state, draft)
 
 
 async def add_attribute_node(state: BotState) -> dict:

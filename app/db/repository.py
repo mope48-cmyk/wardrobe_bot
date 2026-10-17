@@ -24,6 +24,7 @@ async def add_item(
     waterproof: bool = False,
     formal_level: str = "casual",
     season: str = "универсальная",
+    layer: str = "base",
 ) -> WardrobeItem:
     """Добавить вещь. colors — список от 0 до 3 цветов."""
     async with SessionLocal() as session:
@@ -38,6 +39,7 @@ async def add_item(
             waterproof=waterproof,
             formal_level=formal_level,
             season=season,
+            layer=layer,
         )
         session.add(item)
         await session.commit()
@@ -101,7 +103,7 @@ async def update_item_field(
     """
     allowed = {
         "category", "type", "colors", "material", "warmth_level",
-        "waterproof", "formal_level", "season",
+        "waterproof", "formal_level", "season", "layer",
         "generated_photo_file_id",
     }
     if field not in allowed:

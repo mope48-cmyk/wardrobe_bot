@@ -113,6 +113,9 @@ def route_condition(state: BotState) -> str:
     if step == "awaiting_color_text":
         return "add_color_text"
 
+    if step == "awaiting_layer":
+        return "add_layer"
+
     if step == "awaiting_location":
         return "outfit_location"
 
@@ -184,6 +187,7 @@ def build_graph():
     builder.add_node("add_confirm_category", nodes.add_confirm_category_node)
     builder.add_node("add_color", nodes.add_color_node)
     builder.add_node("add_color_text", nodes.add_color_text_node)
+    builder.add_node("add_layer", nodes.add_layer_node)
     builder.add_node("add_attribute", nodes.add_attribute_node)
     builder.add_node("add_material", nodes.add_material_node)
     builder.add_node("add_material_text", nodes.add_material_text_node)
@@ -218,6 +222,7 @@ def build_graph():
             "add_confirm_category": "add_confirm_category",
             "add_color": "add_color",
             "add_color_text": "add_color_text",
+            "add_layer": "add_layer",
             "add_attribute": "add_attribute",
             "add_material": "add_material",
             "add_material_text": "add_material_text",
@@ -234,7 +239,7 @@ def build_graph():
         "outfit_start", "outfit_location", "outfit_occasion",
         "add_start", "add_expect_photo", "add_photo",
         "add_confirm_category", "add_attribute",
-        "add_color", "add_color_text",
+        "add_color", "add_color_text", "add_layer",
         "add_material", "add_material_text",
     ]
     for name in terminal_nodes:

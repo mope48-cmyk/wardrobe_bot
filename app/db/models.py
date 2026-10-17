@@ -57,6 +57,9 @@ class WardrobeItem(Base):
     # Сезон: лето / демисезон / зима / универсальная
     season: Mapped[str] = mapped_column(String(32), default="универсальная")
 
+    # Слой одежды: "base", "mid", "outer", "none"
+    layer: Mapped[str] = mapped_column(String(32), default="base")
+
     # Дата добавления
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
