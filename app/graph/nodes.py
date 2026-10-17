@@ -1970,13 +1970,13 @@ async def outfit_occasion_node(state: BotState) -> dict:
     if len(caption) > 1024:
         caption = caption[:1020] + "…"
 
-    # ВАЖНО: блок photo_ids должен быть ВНЕ условия if (без отступа)
+    # Блок photo_ids — ВНЕ условия if, чтобы выполнялся всегда.
+    # Используем сгенерированное фото, если оно есть, иначе оригинал.
     photo_ids = [
         item.generated_photo_file_id or item.photo_file_id
         for item in result.items
     ]
-    
-    # Добавляем лог, чтобы в консоли видеть, какие фото отправляются
+
     logger.info("Outfit photos: %s", photo_ids)
 
     return {
