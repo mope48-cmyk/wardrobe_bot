@@ -25,8 +25,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install \
     --index-url https://mirrors.aliyun.com/pypi/simple/ \
     --trusted-host mirrors.aliyun.com \
-    --timeout 300 \
-    --retries 30 \
+    --timeout 900 \
+    --retries 50 \
     -r requirements.txt
 
 RUN mkdir -p /app/data "$HF_HOME" && chown -R user:user /app/data /home/user/.cache
