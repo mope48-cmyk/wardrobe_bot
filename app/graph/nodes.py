@@ -1882,8 +1882,17 @@ async def outfit_occasion_node(state: BotState) -> dict:
 
     city_str = f" ({loc['city']})" if loc.get("city") else ""
     temp = weather["temp"]
+    feels_like = weather.get("feels_like", temp)
+    wind = weather.get("wind_speed", 0)
     desc = weather["description"]
-    header = f"🌤 <b>Погода{esc(city_str)}</b>: {desc}, {temp:.0f}°C\n<b>Повод:</b> {text}"
+
+    weather_line = f"🌤 <b>Погода{esc(city_str)}</b>: {desc}, {temp:.0f}°C"
+    if abs(feels_like - temp) >= 2:
+        weather_line += f" (ощущается как {feels_like:.0f}°C)"
+    if wind > 3:
+        weather_line += f", ветер {wind:.0f} м/с"
+
+    header = f"{weather_line}\n<b>Повод:</b> {text}"
 
     if not result.items:
         # Единственный случай, когда не можем помочь: гардероб пуст
