@@ -1,9 +1,9 @@
 """Подбор комплекта одежды по погоде и поводу."""
 
 import logging
+from dataclasses import dataclass, field
 
 from app.db.models import WardrobeItem
-from app.db.repository import get_colors
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +15,24 @@ CATEGORY_ORDER = {"верх": 0, "низ": 1, "обувь": 2, "аксессуа
 WARM_MATERIALS = {"шерсть", "пух", "флис", "кашемир", "кожа"}
 # Материалы, которые дышат
 LIGHT_MATERIALS = {"лён", "хлопок", "шёлк", "вискоза", "трикотаж"}
+
+
+@dataclass
+class OutfitResult:
+    """Результат подбора комплекта.
+
+    items — подобранные вещи (до MAX_ITEMS).
+    strict_categories — категории, где вещь подошла по всем фильтрам.
+    relaxed_categories — категории, где пришлось взять вещь не по погоде.
+    missing_categories — категории, которых нет в гардеробе совсем.
+    no_candidates — True, если вообще ничего не удалось подобрать
+                    (гардероб пуст).
+    """
+    items: list[WardrobeItem] = field(default_factory=list)
+    strict_categories: set[str] = field(default_factory=set)
+    relaxed_categories: set[str] = field(default_factory=set)
+    missing_categories: set[str] = field(default_factory=set)
+    no_candidates: bool = False
 
 
 def _required_warmth(feels_like: float) -> tuple[int, int]:
