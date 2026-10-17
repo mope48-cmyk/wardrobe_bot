@@ -25,6 +25,8 @@ class Settings:
     HF_TOKEN: str
     OWM_API_KEY: str
     DATABASE_URL: str
+    GROQ_API_KEY: str
+    OPENROUTER_API_KEY: str
 
 
 def _get_env(name: str, default: str = "") -> str:
@@ -46,6 +48,8 @@ def load_settings() -> Settings:
         HF_TOKEN=_get_env("HF_TOKEN"),
         OWM_API_KEY=_get_env("OWM_API_KEY"),
         DATABASE_URL=_get_env("DATABASE_URL", DATABASE_URL_DEFAULT),
+        GROQ_API_KEY=_get_env("GROQ_API_KEY"),
+        OPENROUTER_API_KEY=_get_env("OPENROUTER_API_KEY"),
     )
 
 
