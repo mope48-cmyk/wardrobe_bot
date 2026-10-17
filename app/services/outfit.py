@@ -127,17 +127,7 @@ def select_outfit(
     weather: dict,
     occasion: str,
 ) -> OutfitResult:
-    """Подобрать комплект: не более MAX_ITEMS вещей.
-
-    Всегда старается собрать хоть что-то, если в гардеробе есть вещи.
-    Возвращает OutfitResult с информацией о слабых местах.
-
-    items должны быть отсортированы по created_at DESC
-    (это гарантирует get_items).
-
-    Подбор верхней одежды идёт по слоям (base / mid / outer).
-    Слои, которые нужно надеть, определяются по температуре.
-    """
+    """Подобрать комплект с учётом слоёв (без добивания лишними вещами)."""
     result = OutfitResult()
 
     temp = weather.get("temp", 15)
@@ -158,7 +148,6 @@ def select_outfit(
             key=lambda i: -_score(i, formal, has_precip, temp),
         )
 
-    # Никаких вещей вообще
     if not items:
         result.no_candidates = True
         return result
@@ -175,30 +164,34 @@ def select_outfit(
     else:
         required_layers = ["base"]
 
-    # 2. Подбираем "верх" по слоям
+    # 2. Подбираем "верх" строго по слоям (один слой = одна вещь)
     for layer in required_layers:
         layer_items = [
             i for i in by_cat.get("верх", [])
             if getattr(i, "layer", "base") == layer
         ]
+
         if not layer_items:
             if layer == "base":
                 result.missing_categories.add("верх")
             continue
+
         strict = [i for i in layer_items if fits(i)]
         if strict:
             chosen.append(rank(strict)[0])
             result.strict_categories.add("верх")
         else:
+            # Если в слое нет подходящей по warmth — берем ближайшую
             chosen.append(rank(layer_items)[0])
             result.relaxed_categories.add("верх")
 
-    # 3. "низ" и "обувь"
+    # 3. "низ" и "обувь" — по одной вещи
     for cat in ("низ", "обувь"):
         cat_items = by_cat.get(cat, [])
         if not cat_items:
             result.missing_categories.add(cat)
             continue
+
         strict = [i for i in cat_items if fits(i)]
         if strict:
             chosen.append(rank(strict)[0])
@@ -207,7 +200,7 @@ def select_outfit(
             chosen.append(rank(cat_items)[0])
             result.relaxed_categories.add(cat)
 
-    # 4. Аксессуары
+    # 4. Аксессуары (только при холоде)
     if temp < 5:
         acc_items = [
             i for i in by_cat.get("аксессуар", [])
@@ -216,25 +209,17 @@ def select_outfit(
         if acc_items:
             chosen.extend(rank(acc_items)[:3])
 
-    # 5. Добираем оставшиеся
-    if len(chosen) < MAX_ITEMS:
-        chosen_ids = {i.id for i in chosen}
-        for item in items:
-            if len(chosen) >= MAX_ITEMS:
-                break
-            if item.id in chosen_ids or item.category == "аксессуар":
-                continue
-            if not fits(item):
-                continue
-            chosen.append(item)
-            chosen_ids.add(item.id)
+    # 5. Сортируем по категориям и слоям (чтобы "пирог" отображался по порядку)
+    def sort_key(item: WardrobeItem) -> tuple[int, int]:
+        cat_order = CATEGORY_ORDER.get(item.category, 9)
+        if item.category == "верх":
+            layer_order = {"base": 0, "mid": 1, "outer": 2}.get(
+                getattr(item, "layer", "base"), 9
+            )
+            return (cat_order, layer_order)
+        return (cat_order, 0)
 
-    # 6. Обрезка
-    if len(chosen) > MAX_ITEMS:
-        chosen.sort(key=lambda i: i.created_at, reverse=True)
-        chosen = chosen[:MAX_ITEMS]
-
-    chosen.sort(key=lambda i: CATEGORY_ORDER.get(i.category, 9))
+    chosen.sort(key=sort_key)
 
     logger.info(
         "Подбор: temp=%.1f has_precip=%s occasion=%s → %d вещей. "
