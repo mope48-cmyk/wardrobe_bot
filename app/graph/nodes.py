@@ -2089,7 +2089,7 @@ async def outfit_occasion_node(state: BotState) -> dict:
         for item in best_outfit.items
     ]
 
-    # Кнопки навигации (теплее/легче)
+    # Извлекаем ID для кнопок
     kb: list[list[dict]] = []
     row: list[dict] = []
     if best_idx > 0:
@@ -2099,25 +2099,32 @@ async def outfit_occasion_node(state: BotState) -> dict:
     if row:
         kb.append(row)
 
+    messages = [
+        # 1. Отправляем альбом с фото и основным текстом (без кнопок, т.к. Telegram не поддерживает)
+        AIMessage(content=caption, additional_kwargs={"media_group": photo_ids}),
+    ]
+
+    # 2. Если есть кнопки, отправляем отдельное сообщение
+    if kb:
+        messages.append(
+            AIMessage(
+                content="Хотите другой вариант? Нажмите кнопку ниже:",
+                additional_kwargs={"inline_keyboard": kb},
+            )
+        )
+
+    # 3. Главное меню
+    messages.append(
+        AIMessage(
+            content="Или выберите другое действие в меню:",
+            additional_kwargs=_kb(MENU_KEYBOARD),
+        )
+    )
+
     return {
-        "messages": [
-            AIMessage(
-                content=caption,
-                additional_kwargs={
-                    "media_group": photo_ids,
-                    "inline_keyboard": kb,
-                },
-            ),
-            AIMessage(
-                content=(
-                    "Если хотите другой вариант, нажмите кнопки выше. "
-                    "Или /outfit заново."
-                ),
-                additional_kwargs=_kb(MENU_KEYBOARD),
-            ),
-        ],
+        "messages": messages,
         "step": None, "intent": None, "location": None,
-        "outfit_options": outfit_ids,  # <-- Сохраняем только ID!
+        "outfit_options": outfit_ids,
         "outfit_index": best_idx,
         "outfit_city": city_name,
         "occasion": text,
@@ -2190,19 +2197,29 @@ async def outfit_variant_node(state: BotState) -> dict:
     if row:
         kb.append(row)
 
-    return {
-        "messages": [
+    messages = [
+        # 1. Отправляем НОВЫЙ альбом (редактировать альбомы в Telegram нельзя, поэтому они будут копиться)
+        AIMessage(
+            content="\n".join(lines).rstrip(),
+            additional_kwargs={
+                "media_group": [
+                    i.generated_photo_file_id or i.photo_file_id
+                    for i in best_outfit_items
+                ],
+            },
+        )
+    ]
+
+    # 2. Отправляем кнопки отдельным сообщением
+    if kb:
+        messages.append(
             AIMessage(
-                content="\n".join(lines).rstrip(),
-                additional_kwargs={
-                    "media_group": [
-                        i.generated_photo_file_id or i.photo_file_id
-                        for i in best_outfit_items
-                    ],
-                    "inline_keyboard": kb,
-                    "edit_message_id": state.get("edit_message_id"),
-                },
+                content="Что-то ещё?",
+                additional_kwargs={"inline_keyboard": kb},
             )
-        ],
+        )
+
+    return {
+        "messages": messages,
         "outfit_index": idx,
     }
