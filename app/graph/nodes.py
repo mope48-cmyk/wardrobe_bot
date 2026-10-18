@@ -533,6 +533,7 @@ EDIT_FIELD_TO_DB = {
     "waterproof": "waterproof",
     "formal": "formal_level",
     "season": "season",
+    "layer": "layer",
 }
 
 # Человекочитаемое имя поля
@@ -545,6 +546,7 @@ EDIT_FIELD_LABEL = {
     "waterproof": "Водонепроницаемость (да/нет)",
     "formal": "Стиль (casual / business / sport)",
     "season": "Сезон (лето / демисезон / зима / универсальная)",
+    "layer": "Слой",
 }
 
 # Поля со свободным текстовым вводом
@@ -588,6 +590,12 @@ CHOICE_EDIT_FIELDS: dict[str, list[tuple[str, str, object]]] = {
         ("Демисезон", "demi", "демисезон"),
         ("Зима", "winter", "зима"),
         ("Универсальная", "universal", "универсальная"),
+    ],
+    "layer": [
+        ("Базовый", "base", "base"),
+        ("Средний", "mid", "mid"),
+        ("Верхний", "outer", "outer"),
+        ("Нет", "none", "none"),
     ],
 }
 
@@ -651,6 +659,19 @@ def _validate_edit_field(
             return True, lower, ""
         return False, None, "Выберите: лето, демисезон, зима или универсальная."
 
+    if field == "layer":
+        layer_map = {
+            "базовый": "base",
+            "средний": "mid",
+            "верхний": "outer",
+            "нет": "none",
+        }
+        if lower in layer_map:
+            return True, layer_map[lower], ""
+        if lower in ("base", "mid", "outer", "none"):
+            return True, lower, ""
+        return False, None, "Выберите: базовый, средний, верхний или нет."
+
     return False, None, "Неизвестное поле."
 
 
@@ -658,6 +679,11 @@ def _field_value_str(item, field: str) -> str:
     """Текущее значение поля в виде строки для отображения."""
     if field == "colors":
         return ", ".join(get_colors(item)) or "—"
+
+    if field == "layer":
+        return {"base": "базовый", "mid": "средний", "outer": "верхний", "none": "нет"}.get(
+            getattr(item, "layer", "base"), "базовый"
+        )
 
     db_field = EDIT_FIELD_TO_DB[field]
     value = getattr(item, db_field)
@@ -708,12 +734,15 @@ async def list_edit_node(state: BotState) -> dict:
             {"text": "Материал", "callback_data": "list:edit:material"},
         ],
         [
-            {"text": "Тепло", "callback_data": "list:edit:warmth"},
-            {"text": "Водонепроницаемость", "callback_data": "list:edit:waterproof"},
+            {"text": "Слой", "callback_data": "list:edit:layer"},
+            {"text": "Сезон", "callback_data": "list:edit:season"},
         ],
         [
+            {"text": "Тепло", "callback_data": "list:edit:warmth"},
             {"text": "Стиль", "callback_data": "list:edit:formal"},
-            {"text": "Сезон", "callback_data": "list:edit:season"},
+        ],
+        [
+            {"text": "Водонепроницаемость", "callback_data": "list:edit:waterproof"},
         ],
         [
             {"text": "❌ Отмена", "callback_data": "list:edit:cancel"},
@@ -1831,35 +1860,23 @@ def _validate_llm_selection(
         logger.info("LLM-валидация: нет обуви")
         return None
 
-    # 2. Проверка слоёв (P0.1)
-    temp = weather.get("feels_like", weather.get("temp", 15))
-    if temp < 0:
-        req_layers = 3
-    elif temp <= 15:
-        req_layers = 2
-    else:
-        req_layers = 1
-
-    # Проверяем, сколько слоёв вообще есть в гардеробе у пользователя
-    available_top_layers = {
-        getattr(i, "layer", "base")
-        for i in items
-        if i.category == "верх"
-    }
-    # Если пользователь имеет только 1 слой (только базовый), не требуем 3
-    actual_required = min(req_layers, len(available_top_layers))
-
+    # 3. Проверка иерархии слоёв
     top_items = [i for i in selected if i.category == "верх"]
-    layers = set(getattr(i, "layer", "base") for i in top_items)
+    layers = {getattr(i, "layer", "base") for i in top_items}
 
-    if not has_dress and len(layers) < actual_required:
-        logger.info(
-            "LLM-валидация: мало слоёв верха (%d < %d)",
-            len(layers), actual_required,
-        )
-        return None
+    # Если выбран верхний слой (outer) — обязаны быть base и mid
+    if "outer" in layers:
+        if not {"base", "mid"}.issubset(layers):
+            logger.info("LLM-валидация: верхний слой (outer) без базового (base) и среднего (mid)")
+            return None
 
-    # 3. Проверка цветового бюджета
+    # Если выбран средний слой (mid) — обязан быть base
+    if "mid" in layers:
+        if "base" not in layers:
+            logger.info("LLM-валидация: средний слой (mid) без базового (base)")
+            return None
+
+    # 4. Проверка цветового бюджета
     from app.services.outfit import _color_score
     total_color_score = sum(_color_score(i) for i in selected)
     if total_color_score > 3.0:

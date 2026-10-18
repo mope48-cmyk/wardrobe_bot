@@ -222,38 +222,47 @@ def select_outfit(items: list[WardrobeItem], weather: dict, occasion: str):
             return item
         return ranked[0]
 
-    # 1. Слои по температуре (P0.1)
-    if temp < 0:
-        required_layers = ["base", "mid", "outer"]
-    elif temp <= 15:
-        required_layers = ["base", "mid_or_outer"]  # 2 слоя
-    else:
-        required_layers = ["base"]  # 1 слой
+    # 1. Верх по слоям с учетом СТРОГОЙ иерархии
+    tops = by_cat.get("верх", [])
+    bases = [i for i in tops if getattr(i, "layer", "base") == "base"]
+    mids = [i for i in tops if getattr(i, "layer", "base") == "mid"]
+    outers = [i for i in tops if getattr(i, "layer", "base") == "outer"]
 
-    # 2. Верх по слоям
-    for layer in required_layers:
-        if layer == "mid_or_outer":
-            layer_items = [
-                i for i in by_cat.get("верх", [])
-                if getattr(i, "layer", "base") in ("mid", "outer")
-            ]
-        else:
-            layer_items = [
-                i for i in by_cat.get("верх", [])
-                if getattr(i, "layer", "base") == layer
-            ]
+    has_base = False
+    has_mid = False
 
-        if not layer_items:
-            if layer == "base":
-                result.missing_categories.add("верх")
-            continue
-
-        strict = [i for i in layer_items if fits(i)]
-        if strict:
-            chosen.append(pick(strict))
+    # 1.1. Базовый слой — всегда, если есть
+    if bases:
+        strict_b = [i for i in bases if fits(i)]
+        if strict_b:
+            chosen.append(pick(strict_b))
             result.strict_categories.add("верх")
         else:
-            chosen.append(pick(layer_items))
+            chosen.append(pick(bases))
+            result.relaxed_categories.add("верх")
+        has_base = True
+    else:
+        result.missing_categories.add("верх")
+
+    # 1.2. Средний слой — нужен при t <= 15, и ТОЛЬКО если есть базовый
+    if temp <= 15 and has_base and mids:
+        strict_m = [i for i in mids if fits(i)]
+        if strict_m:
+            chosen.append(pick(strict_m))
+            result.strict_categories.add("верх")
+        else:
+            chosen.append(pick(mids))
+            result.relaxed_categories.add("верх")
+        has_mid = True
+
+    # 1.3. Верхний слой — нужен при t < 0, и ТОЛЬКО если есть базовый + средний
+    if temp < 0 and has_mid and outers:
+        strict_o = [i for i in outers if fits(i)]
+        if strict_o:
+            chosen.append(pick(strict_o))
+            result.strict_categories.add("верх")
+        else:
+            chosen.append(pick(outers))
             result.relaxed_categories.add("верх")
 
     # 3. Низ и Обувь
