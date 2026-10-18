@@ -1989,7 +1989,6 @@ async def outfit_occasion_node(state: BotState) -> dict:
     llm_selection = await select_outfit_with_llm(weather, text, list(items))
 
     selected_items = None
-    llm_explanation = ""
     strict_cats: set[str] = set()
     relaxed_cats: set[str] = set()
     missing_cats: set[str] = set()
@@ -2000,10 +1999,9 @@ async def outfit_occasion_node(state: BotState) -> dict:
         )
         if validated:
             selected_items = validated
-            llm_explanation = llm_selection["explanation"]
             logger.info(
-                "LLM выбрала комплект: ids=%s, объяснение=%r",
-                llm_selection["item_ids"], llm_explanation[:120],
+                "LLM выбрала комплект: ids=%s",
+                llm_selection["item_ids"],
             )
 
     # --- 2. Fallback на детерминированный алгоритм ---
@@ -2044,22 +2042,18 @@ async def outfit_occasion_node(state: BotState) -> dict:
     if wind > 3:
         weather_line += f", ветер {wind:.0f} м/с"
 
-    # --- 4. Всегда генерируем комментарий (даже если сработал fallback) ---
+    # --- 4. Всегда генерируем живой комментарий-рекомендацию от Васильева ---
+    # Независимо от того, кто выбрал вещи (LLM или fallback)
     city_name = loc.get("city") or "вашем городе"
 
-    # Если LLM-селектор выдал объяснение — используем его.
-    # Если нет (fallback) — просим Васильева прокомментировать.
-    comment = llm_explanation
-    if not comment:
-        comment = await generate_vasiliev_comment(
-            weather, city_name, text, selected_items
-        )
+    comment = await generate_vasiliev_comment(
+        weather, city_name, text, selected_items
+    )
 
     if not comment:
-        # Если GigaChat совсем упала, даем запасной вариант
+        # Запасной вариант, если GigaChat совсем упала
         comment = (
-            "Ах, мои дорогие! Погода сегодня — сплошное безумие. "
-            "Этот образ спасет ваш день!"
+            "Ах, дорогие мои! Этот образ — просто спасение для такой погоды!"
         )
 
     header = (
@@ -2097,7 +2091,7 @@ async def outfit_occasion_node(state: BotState) -> dict:
         lines.append("")
 
     # Предупреждения — только при fallback (LLM сама знает, что делает)
-    if not llm_explanation:
+    if not llm_selection:
         warnings: list[str] = []
         if relaxed_cats:
             relaxed_names = ", ".join(
