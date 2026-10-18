@@ -15,6 +15,7 @@ MENU_LABELS: dict[str, str] = {
     "мой гардероб": "list",
     "подобрать образ": "outfit_start",
     "помощь": "help",
+    "справка": "help",
     "отмена": "cancel",
 }
 
@@ -79,7 +80,7 @@ def route_condition(state: BotState) -> str:
         cmd = text.split()[0].lower()
         if cmd == "/start":
             return "start"
-        if cmd == "/help":
+        if cmd in ("/help", "/info"):
             return "help"
         if cmd == "/cancel":
             return "cancel"
@@ -246,4 +247,4 @@ def build_graph():
         builder.add_edge(name, END)
 
     checkpointer = MemorySaver()
-    return builder.compile(checkpointer=checkpointer)
+    return builder.build(checkpointer=checkpointer)
