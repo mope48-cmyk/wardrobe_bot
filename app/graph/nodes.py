@@ -122,14 +122,15 @@ async def _persist_item(state: BotState, draft: dict) -> dict:
         await add_item(
             user_id=state["user_id"],
             photo_file_id=draft["photo_file_id"],
-            category=draft["category"],
-            type=draft["type"],
+            category=draft.get("category", "верх"),  # страховка
+            type=draft.get("type", "вещь"),           # страховка
             colors=item_colors,
             material=draft.get("material", ""),
-            warmth_level=draft["warmth_level"],
-            waterproof=draft["waterproof"],
-            formal_level=draft["formal_level"],
-            season=draft["season"],
+            # Безопасные значения по умолчанию:
+            warmth_level=draft.get("warmth_level", 3),
+            waterproof=draft.get("waterproof", False),
+            formal_level=draft.get("formal_level", "casual"),
+            season=draft.get("season", "универсальная"),
             layer=draft.get("layer", "base"),
         )
     except Exception as e:
@@ -144,19 +145,19 @@ async def _persist_item(state: BotState, draft: dict) -> dict:
             "step": None, "draft_item": None, "intent": None,
         }
 
-    waterproof_str = "да" if draft["waterproof"] else "нет"
+    waterproof_str = "да" if draft.get("waterproof", False) else "нет"
     return {
         "messages": [
             AIMessage(
                 content=(
                     "Готово! Сохранил вещь:\n"
-                    f"• {draft['category']} / {draft['type']}\n"
+                    f"• {draft.get('category', 'верх')} / {draft.get('type', 'вещь')}\n"
                     f"• цвета: {', '.join(item_colors) if item_colors else '—'}\n"
                     f"• материал: {draft.get('material') or '—'}\n"
-                    f"• тепло: {draft['warmth_level']}/5\n"
+                    f"• тепло: {draft.get('warmth_level', 3)}/5\n"
                     f"• водонепроницаемая: {waterproof_str}\n"
-                    f"• стиль: {draft['formal_level']}\n"
-                    f"• сезон: {draft['season']}\n\n"
+                    f"• стиль: {draft.get('formal_level', 'casual')}\n"
+                    f"• сезон: {draft.get('season', 'универсальная')}\n\n"
                     "Добавьте ещё вещь командой /add."
                 ),
                 additional_kwargs=_kb(MENU_KEYBOARD),
