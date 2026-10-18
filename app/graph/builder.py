@@ -247,4 +247,4 @@ def build_graph():
         builder.add_edge(name, END)
 
     checkpointer = MemorySaver()
-    return builder.build(checkpointer=checkpointer)
+    return builder.compile(checkpointer=checkpointer)
