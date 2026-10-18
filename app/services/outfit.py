@@ -1,4 +1,4 @@
-"""Подбор комплекта одежды по погоде и поводу (математический алгоритм)."""
+"""Подбор комплекта одежды: новый математический алгоритм + fallback."""
 
 import logging
 from dataclasses import dataclass, field
@@ -8,11 +8,25 @@ from app.db.repository import get_colors
 
 logger = logging.getLogger(__name__)
 
-# --- Константы для цветов ---
+# ---------- Константы ----------
+CATEGORY_ORDER = {"верх": 0, "низ": 1, "обувь": 2, "аксессуар": 3}
+
+WARM_MATERIALS = {"шерсть", "пух", "флис", "кашемир", "кожа"}
+LIGHT_MATERIALS = {"лён", "хлопок", "шёлк", "вискоза", "трикотаж"}
+
 NEUTRAL_COLORS = {
     "чёрный", "белый", "серый", "тёмно-серый", "светло-серый", 
     "бежевый", "кремовый", "тёмно-синий", "коричневый", "тёмно-коричневый"
 }
+
+OCCASION_TO_FORMAL = {
+    "работа": "business",
+    "встреча": "business",
+    "прогулка": "casual",
+    "спорт": "sport",
+    "другое": None,
+}
+
 
 @dataclass
 class OutfitResult:
@@ -22,19 +36,157 @@ class OutfitResult:
     relaxed_categories: set[str] = field(default_factory=set)
     no_candidates: bool = False
 
+
+# ---------- Цвета ----------
+
 def _color_score(item: WardrobeItem) -> float:
-    """Считает баллы за цвет вещи."""
+    """Баллы за цвет: нейтральный 0.5, яркий 1.0."""
     colors = get_colors(item)
     if not colors:
         return 0.5
-    # Если есть хоть один не-нейтральный цвет — 1.0
     if any(c.lower() not in NEUTRAL_COLORS for c in colors):
         return 1.0
     return 0.5
 
+
+# ==========================================================
+# СТАРЫЙ АЛГОРИТМ (FALLBACK)
+# ==========================================================
+
+def _required_warmth(feels_like: float) -> tuple[int, int]:
+    if feels_like < -10: return 5, 5
+    if feels_like < 0: return 4, 5
+    if feels_like < 10: return 3, 5
+    if feels_like < 18: return 2, 4
+    if feels_like < 25: return 1, 3
+    return 1, 2
+
+
+def _ideal_warmth(temp: float) -> int:
+    if temp >= 25: return 1
+    if temp >= 18: return 2
+    if temp >= 10: return 3
+    if temp >= 0: return 4
+    return 5
+
+
+def _ideal_season(temp: float) -> str:
+    if temp >= 20: return "лето"
+    if temp >= 10: return "демисезон"
+    return "зима"
+
+
+def _score_old(item, formal, weather, occasion) -> int:
+    temp = weather.get("feels_like", weather.get("temp", 15))
+    has_precip = weather.get("has_precipitation", False)
+    wind = weather.get("wind_speed", 0.0)
+    s = 0
+
+    if formal and item.formal_level == formal: s += 10
+    if has_precip and item.waterproof: s += 10
+
+    if wind > 5.0:
+        if item.category == "верх":
+            layer = getattr(item, "layer", "base")
+            if layer == "outer": s += 5
+            elif layer == "base": s -= 5
+        if item.waterproof: s += 3
+        if item.type in ("парка", "пуховик", "куртка"): s += 3
+
+    mat = (item.material or "").lower()
+    if mat:
+        if temp > 22:
+            if any(m in mat for m in LIGHT_MATERIALS): s += 5
+            if any(m in mat for m in WARM_MATERIALS): s -= 5
+        elif temp < 5:
+            if any(m in mat for m in WARM_MATERIALS): s += 5
+            if mat in ("лён", "шёлк"): s -= 5
+
+    if occasion == "спорт":
+        if any(m in mat for m in LIGHT_MATERIALS): s += 3
+        if item.formal_level == "sport": s += 5
+
+    diff = abs(item.warmth_level - _ideal_warmth(temp))
+    s += 2 * max(0, 3 - diff)
+    if item.season == _ideal_season(temp): s += 3
+    return s
+
+
+def _accessory_matches(item, temp: float) -> bool:
+    t = item.type.lower()
+    hat_kw = ("шапк", "бини", "бейсболк", "шляп", "кепк")
+    if temp < 0:
+        return any(k in t for k in hat_kw) or "шарф" in t or "перчат" in t
+    if temp < 5:
+        return any(k in t for k in hat_kw)
+    return False
+
+
+def _select_outfit_fallback(items, weather, occasion) -> OutfitResult:
+    """Простой алгоритм на случай, если новый не собрал ничего."""
+    result = OutfitResult()
+    temp = weather.get("feels_like", weather.get("temp", 15))
+    min_w, max_w = _required_warmth(temp)
+    formal = OCCASION_TO_FORMAL.get(occasion)
+
+    by_cat: dict[str, list] = {}
+    for item in items:
+        by_cat.setdefault(item.category, []).append(item)
+
+    def fits(i):
+        return min_w <= i.warmth_level <= max_w
+
+    def rank(lst):
+        return sorted(lst, key=lambda i: -_score_old(i, formal, weather, occasion))
+
+    def pick(candidates):
+        ranked = rank(candidates)
+        # Приоритет — пройти по цветовому бюджету
+        budget = 0.0
+        for item in ranked:
+            if budget + _color_score(item) <= 3.0:
+                return item
+        return ranked[0] if ranked else None
+
+    chosen = []
+    missing = set()
+
+    # Верх: просто берём лучшую из всех (без строгой иерархии)
+    tops = by_cat.get("верх", [])
+    if tops:
+        strict = [i for i in tops if fits(i)]
+        it = pick(strict) if strict else pick(tops)
+        if it: chosen.append(it)
+    else:
+        missing.add("верх")
+
+    for cat in ("низ", "обувь"):
+        cat_items = by_cat.get(cat, [])
+        if not cat_items:
+            missing.add(cat)
+            continue
+        strict = [i for i in cat_items if fits(i)]
+        it = pick(strict) if strict else pick(cat_items)
+        if it: chosen.append(it)
+
+    if temp < 5:
+        accs = [i for i in by_cat.get("аксессуар", []) if _accessory_matches(i, temp)]
+        if accs:
+            chosen.append(rank(accs)[0])
+
+    chosen.sort(key=lambda i: (CATEGORY_ORDER.get(i.category, 9), 0))
+    result.items = chosen
+    result.missing_categories = missing
+    if not chosen:
+        result.no_candidates = True
+    return result
+
+
+# ==========================================================
+# НОВЫЙ АЛГОРИТМ
+# ==========================================================
+
 def _get_targets(teff: float) -> dict:
-    """Таблицы требуемого тепла по слотам."""
-    # TOP_TABLE: (min_warmth, max_warmth, need_mid, need_outer)
     if teff >= 26:      top = (1, 2, False, False)
     elif teff >= 22:    top = (1, 3, False, False)
     elif teff >= 18:    top = (2, 4, True, False)
@@ -64,12 +216,12 @@ def _get_targets(teff: float) -> dict:
         "shoes_min": shoes[0], "shoes_max": shoes[1],
     }
 
-def _score_item(item: WardrobeItem, target: dict, slot: str, need_waterproof: bool) -> float:
-    """Оценка вещи от 0 до 1."""
-    # 1. Warmth fit
+
+def _score_item(item, target: dict, slot: str, need_waterproof: bool) -> float:
     if slot == "top":
-        if getattr(item, "layer", "base") == "base": w_target = target["top_min"]
-        elif getattr(item, "layer", "base") == "mid": w_target = 3
+        layer = getattr(item, "layer", "base")
+        if layer == "base": w_target = target["top_min"]
+        elif layer == "mid": w_target = 3
         else: w_target = 4
     elif slot == "bottom":
         w_target = (target["bottom_min"] + target["bottom_max"]) / 2
@@ -78,46 +230,48 @@ def _score_item(item: WardrobeItem, target: dict, slot: str, need_waterproof: bo
 
     warmth_fit = max(0.0, 1.0 - abs(item.warmth_level - w_target) / 5.0)
 
-    # 2. Waterproof
     if need_waterproof:
         w_match = 1.0 if item.waterproof else 0.2
     else:
         w_match = 1.0 if not item.waterproof else 0.8
 
-    # 3. Season (грубая проверка)
     s_match = 1.0 if item.season == "универсальная" else 0.8
 
-    # Итоговый score
     return 0.6 * warmth_fit + 0.3 * w_match + 0.1 * s_match
 
+
+# ==========================================================
+# ГЛАВНАЯ ФУНКЦИЯ
+# ==========================================================
+
 def select_outfit(items: list[WardrobeItem], weather: dict, occasion: str) -> list[OutfitResult]:
-    """Возвращает список лучших комплектов (от самого точного к менее точным)."""
+    """Возвращает список вариантов. Сначала пробует новый алгоритм,
+    если не собрал — откатывается на старый."""
     if not items:
         return [OutfitResult(no_candidates=True)]
 
-    # 1. Нормализация погоды
     temp = weather.get("feels_like", weather.get("temp", 15))
     wind = weather.get("wind_speed", 0)
     is_wet = weather.get("has_precipitation", False)
-    
-    teff = temp
-    if wind >= 8: teff -= 2
-    
+
+    teff = temp - 2 if wind >= 8 else temp
     target = _get_targets(teff)
     need_waterproof = is_wet
-    
-    # 2. Раскладываем по слотам
+
+    # Раскладываем по слотам
     bases, mids, outers, bottoms, shoes = [], [], [], [], []
     for i in items:
         if i.category == "верх":
-            if getattr(i, "layer", "base") == "base": bases.append(i)
-            elif getattr(i, "layer", "base") == "mid": mids.append(i)
+            layer = getattr(i, "layer", "base")
+            if layer == "base": bases.append(i)
+            elif layer == "mid": mids.append(i)
             else: outers.append(i)
         elif i.category == "низ": bottoms.append(i)
         elif i.category == "обувь": shoes.append(i)
 
-    # 3. Скоринг и отсев
     def top_n(lst, slot, n=4):
+        if not lst:
+            return []
         scored = [(i, _score_item(i, target, slot, need_waterproof)) for i in lst]
         return [i for i, s in sorted(scored, key=lambda x: -x[1]) if s > 0][:n]
 
@@ -132,23 +286,20 @@ def select_outfit(items: list[WardrobeItem], weather: dict, occasion: str) -> li
     if not bottoms: missing.add("низ")
     if not shoes: missing.add("обувь")
 
-    # 4. Генерация комбинаций
-    combos = []
-    
     base_opts = bases if bases else [None]
     mid_opts = mids if mids else [None]
     outer_opts = outers if outers else [None]
     bottom_opts = bottoms if bottoms else [None]
     shoe_opts = shoes if shoes else [None]
 
+    combos = []
     for b in base_opts:
         for m in mid_opts:
             for o in outer_opts:
-                # ЖЕСТКАЯ ИЕРАРХИЯ СЛОЕВ
+                # Строгая иерархия слоёв
                 if o and not (b and m): continue
                 if m and not b: continue
 
-                # Проверка суммы тепла верха
                 w_sum = sum(i.warmth_level for i in [b, m, o] if i)
                 if w_sum < target["top_min"] or w_sum > target["top_max"] + 1:
                     continue
@@ -157,26 +308,35 @@ def select_outfit(items: list[WardrobeItem], weather: dict, occasion: str) -> li
                     for sh in shoe_opts:
                         combo = [x for x in [b, m, o, bot, sh] if x]
                         if not combo: continue
-                        
-                        # Проверка цветов (не больше 3 баллов)
+
+                        # Цветовой бюджет
                         c_score = sum(_color_score(i) for i in combo)
                         if c_score > 3.0: continue
 
-                        # Проверка waterproof
+                        # Waterproof
                         if need_waterproof:
                             has_wp = any(i.waterproof for i in combo if i.category in ("верх", "обувь"))
                             if not has_wp: continue
 
                         combos.append(combo)
 
-    # 5. Сортировка и упаковка
-    # Сортируем по сумме warmth (для кнопок "теплее/легче")
-    combos.sort(key=lambda c: sum(i.warmth_level for i in c if i.category=="верх"), reverse=True)
-    
+    # Если новый алгоритм ничего не собрал — fallback на старый
+    if not combos:
+        logger.info("Новый алгоритм не собрал комбинаций → fallback на старый")
+        fallback = _select_outfit_fallback(items, weather, occasion)
+        if fallback.items:
+            return [fallback]
+        return [OutfitResult(no_candidates=True)]
+
+    # Сортируем: от самого тёплого к самому лёгкому
+    combos.sort(
+        key=lambda c: sum(i.warmth_level for i in c if i.category == "верх"),
+        reverse=True,
+    )
+
     results = []
-    for c in combos[:5]: # Берем топ-5 для кнопок
-        # Сортируем вещи внутри образа для красивого вывода
-        c.sort(key=lambda i: {"верх": 0, "низ": 1, "обувь": 2}.get(i.category, 9))
+    for c in combos[:5]:
+        c.sort(key=lambda i: CATEGORY_ORDER.get(i.category, 9))
         results.append(OutfitResult(items=c, missing_categories=missing))
-        
+
     return results
