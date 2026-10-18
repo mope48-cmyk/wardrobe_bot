@@ -7,6 +7,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_gigachat.chat_models import GigaChat
 
 from app.config import settings
+from app.db.repository import get_colors
 # Импортируем функцию оценки из вашего outfit.py
 from app.services.outfit import _score, OCCASION_TO_FORMAL
 
@@ -167,3 +168,54 @@ def _parse_llm_response(raw: str) -> dict | None:
         explanation = ""
 
     return {"item_ids": ids, "explanation": explanation.strip()}
+
+
+async def generate_vasiliev_comment(
+    weather: dict, location: str, occasion: str, items: list
+) -> str | None:
+    """Сгенерировать остроумный комментарий в стиле Александра Васильева."""
+    if _llm is None or not items:
+        return None
+
+    temp = weather.get("feels_like", weather.get("temp", 15))
+    desc = weather.get("description", "")
+
+    # Собираем список вещей
+    items_text = "\n".join(
+        f"- {i.category} / {i.type} "
+        f"(цвета: {', '.join(get_colors(i)) if get_colors(i) else '—'}, "
+        f"материал: {i.material or '—'})"
+        for i in items
+    )
+
+    system_prompt = (
+        "Ты — великий историк моды Александр Васильев. Твоя манера речи: "
+        "театральная, экспрессивная, с восклицаниями ('Ах, Боже мой!', "
+        "'Это просто катастрофа!', 'Восхитительно!'), "
+        "легкой иронией и французским шармом. Ты обожаешь обсуждать образы, "
+        "погоду и поводы.\n\n"
+        "Твоя задача — дать короткий (3-4 предложения) остроумный комментарий "
+        "к образу пользователя. "
+        "Обязательно упомяни место, погоду, повод и сами вещи (называй их так же, "
+        "как в списке). "
+        "Пиши от первого лица, эмоционально и с юмором."
+    )
+
+    user_prompt = (
+        f"Место: {location}\n"
+        f"Погода: {desc}, {temp:.0f}°C\n"
+        f"Повод: {occasion}\n"
+        f"Выбранный комплект:\n{items_text}\n\n"
+        "Напиши свой вердикт этому образу!"
+    )
+
+    try:
+        response = await _llm.ainvoke([
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=user_prompt),
+        ])
+        # Возвращаем только текст, без JSON
+        return response.content.strip()
+    except Exception:
+        logger.exception("Ошибка генерации комментария Васильева")
+        return None

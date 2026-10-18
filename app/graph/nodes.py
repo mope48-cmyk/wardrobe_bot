@@ -15,7 +15,7 @@ from app.db.repository import (
     update_item_field,
 )
 from app.graph.state import BotState
-from app.services.llm_stylist import select_outfit_with_llm
+from app.services.llm_stylist import select_outfit_with_llm, generate_vasiliev_comment
 from app.services.outfit import select_outfit
 from app.services.product_photo_bg import (
     is_generating,
@@ -1773,7 +1773,8 @@ def _validate_llm_selection(
     Учитываем:
       - какие категории вообще есть в гардеробе (чтобы не требовать
         от LLM того, чего у пользователя нет);
-      - требования по слоям для текущей температуры;
+      - требования по слоям для текущей температуры, но не больше,
+        чем слоёв вообще есть в гардеробе;
       - цветовой бюджет (не больше MAX_COLOR_SCORE).
     """
     by_id = {item.id: item for item in items}
@@ -1812,7 +1813,7 @@ def _validate_llm_selection(
         logger.info("LLM-валидация: нет обуви")
         return None
 
-    # 2. Проверка слоёв
+    # 2. Проверка слоёв (P0.1)
     temp = weather.get("feels_like", weather.get("temp", 15))
     if temp < 0:
         req_layers = 3
@@ -1821,13 +1822,22 @@ def _validate_llm_selection(
     else:
         req_layers = 1
 
+    # Проверяем, сколько слоёв вообще есть в гардеробе у пользователя
+    available_top_layers = {
+        getattr(i, "layer", "base")
+        for i in items
+        if i.category == "верх"
+    }
+    # Если пользователь имеет только 1 слой (только базовый), не требуем 3
+    actual_required = min(req_layers, len(available_top_layers))
+
     top_items = [i for i in selected if i.category == "верх"]
     layers = set(getattr(i, "layer", "base") for i in top_items)
 
-    if not has_dress and len(layers) < req_layers:
+    if not has_dress and len(layers) < actual_required:
         logger.info(
             "LLM-валидация: мало слоёв верха (%d < %d)",
-            len(layers), req_layers,
+            len(layers), actual_required,
         )
         return None
 
@@ -2034,14 +2044,30 @@ async def outfit_occasion_node(state: BotState) -> dict:
     if wind > 3:
         weather_line += f", ветер {wind:.0f} м/с"
 
-    header = f"{weather_line}\n<b>Повод:</b> {text}"
+    # --- 4. Всегда генерируем комментарий (даже если сработал fallback) ---
+    city_name = loc.get("city") or "вашем городе"
 
-    # --- 4. Формируем текст: объяснение LLM или предупреждения ---
-    lines = [header]
-    if llm_explanation:
-        lines.append("")
-        lines.append(f"💬 <i>{esc(llm_explanation)}</i>")
-    lines.append("")
+    # Если LLM-селектор выдал объяснение — используем его.
+    # Если нет (fallback) — просим Васильева прокомментировать.
+    comment = llm_explanation
+    if not comment:
+        comment = await generate_vasiliev_comment(
+            weather, city_name, text, selected_items
+        )
+
+    if not comment:
+        # Если GigaChat совсем упала, даем запасной вариант
+        comment = (
+            "Ах, мои дорогие! Погода сегодня — сплошное безумие. "
+            "Этот образ спасет ваш день!"
+        )
+
+    header = (
+        f"{weather_line}\n<b>Повод:</b> {text}\n\n"
+        f"💬 <i>{esc(comment)}</i>"
+    )
+
+    lines = [header, ""]
 
     by_cat: dict[str, list] = {}
     for item in selected_items:
