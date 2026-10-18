@@ -4,7 +4,7 @@
 Когда готово:
   - сохраняем file_id в БД;
   - если пользователь всё ещё смотрит на эту вещь — обновляем карточку;
-  - всегда шлём короткое уведомление с готовым фото.
+  - всегда шлём текстовое уведомление.
 """
 
 import asyncio
@@ -83,7 +83,7 @@ async def _chat_action_loop(
 
 
 def _card_keyboard(index: int, total: int) -> InlineKeyboardMarkup:
-    """Клавиатура карточки после завершения генерации."""
+    """Клавиатура карточки (используется только при обновлении самой карточки в шаге 5)."""
     prev_cb = "list:prev" if index > 0 else "list:noop:first"
     next_cb = "list:next" if index < total - 1 else "list:noop:last"
 
@@ -120,26 +120,40 @@ async def _build_card_caption(
     item_id: int, card_index: int, card_total: int
 ) -> str:
     """Собрать caption карточки вещи для обновления и уведомления.
-
-    Возвращает пустую строку, если вещь не найдена.
+    
+    Компактный формат: цвет, материал и слой в одну строку.
     """
     item = await get_item(item_id)
     if item is None:
         return ""
 
-    colors_str = _format_colors(get_colors(item))
-    material_line = (
-        f"материал: {item.material}\n" if item.material else ""
-    )
+    parts = []
+    
+    item_colors = get_colors(item)
+    if item_colors:
+        parts.append(f"цвета: {_format_colors(item_colors)}")
+        
+    if item.material:
+        parts.append(f"материал: {item.material}")
+        
+    layer_map = {
+        "base": "базовый",
+        "mid": "средний",
+        "outer": "верхний",
+        "none": "нет",
+    }
+    layer_ru = layer_map.get(getattr(item, "layer", "base"), "базовый")
+    parts.append(f"слой: {layer_ru}")
+    
+    attrs_str = " | ".join(parts)
     waterproof_mark = "💧 " if item.waterproof else ""
 
     return (
         f"📋 Вещь <b>{card_index + 1}</b> из <b>{card_total}</b>\n\n"
         f"<b>{item.category} / {item.type}</b>\n"
-        f"цвета: {colors_str}\n"
-        f"{material_line}"
-        f"{waterproof_mark}тепло: {item.warmth_level}/5, "
-        f"стиль: {item.formal_level}, сезон: {item.season}\n\n"
+        f"{attrs_str}\n"
+        f"{waterproof_mark}тепло: {item.warmth_level}/5 | "
+        f"стиль: {item.formal_level} | сезон: {item.season}\n\n"
         f"📸 <i>фото из каталога</i>"
     )
 
@@ -177,7 +191,6 @@ async def generate_product_photo_bg(
         )
 
         # 3. ВРЕМЕННО загружаем в Telegram, чтобы получить file_id.
-        #    После получения file_id сообщение удалим.
         sent = await bot.send_photo(
             chat_id=chat_id,
             photo=BufferedInputFile(product_bytes, filename="catalog.jpg"),
@@ -237,19 +250,19 @@ async def generate_product_photo_bg(
             except Exception:
                 logger.exception("Ошибка обновления карточки")
 
-        # 6. ТЕКСТОВОЕ уведомление с caption карточки (без фото)
+        # 6. ТЕКСТОВОЕ уведомление без фото и кнопок
         try:
             card_caption = await _build_card_caption(
                 item_id, card_index, card_total
             )
             notification_text = (
-                "✅ <b>Фото для каталога готово!</b>\n\n"
+                f"✅ <b>Фото для каталога вещи «{item_type}» готово!</b>\n\n"
                 f"{card_caption}"
             )
             await bot.send_message(
                 chat_id=chat_id,
                 text=notification_text,
-                reply_markup=_card_keyboard(card_index, card_total),
+                # reply_markup удален, чтобы не было кнопок
             )
         except Exception:
             logger.exception("Не удалось отправить текстовое уведомление")

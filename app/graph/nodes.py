@@ -257,22 +257,38 @@ def _format_color_with_emoji(color: str) -> str:
 
 
 def _item_caption(item) -> str:
-    """Подпись под фото вещи."""
-    waterproof_mark = "💧 " if item.waterproof else ""
-    material_line = f"материал: {item.material}\n" if item.material else ""
+    """Подпись под фото вещи (компактный формат)."""
+    parts = []
 
+    # Цвет
     item_colors = get_colors(item)
     if item_colors:
-        color_line = f"цвета: {', '.join(item_colors)}\n"
-    else:
-        color_line = ""
+        parts.append(f"цвет: {', '.join(item_colors)}")
+
+    # Материал
+    if item.material:
+        parts.append(f"материал: {item.material}")
+
+    # Слой
+    layer_map = {
+        "base": "базовый",
+        "mid": "средний",
+        "outer": "верхний",
+        "none": "нет",
+    }
+    layer_ru = layer_map.get(getattr(item, "layer", "base"), "базовый")
+    parts.append(f"слой: {layer_ru}")
+
+    # Собираем атрибуты в одну строку через разделитель
+    attrs_str = " | ".join(parts)
+
+    waterproof_mark = "💧 " if item.waterproof else ""
 
     return (
         f"<b>{item.category} / {item.type}</b>\n"
-        f"{color_line}"
-        f"{material_line}"
-        f"{waterproof_mark}тепло: {item.warmth_level}/5, "
-        f"стиль: {item.formal_level}, сезон: {item.season}"
+        f"{attrs_str}\n"
+        f"{waterproof_mark}тепло: {item.warmth_level}/5 | "
+        f"стиль: {item.formal_level} | сезон: {item.season}"
     )
 
 
