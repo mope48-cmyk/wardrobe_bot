@@ -1748,12 +1748,17 @@ async def add_material_text_node(state: BotState) -> dict:
 VALID_OCCASIONS = {"работа", "прогулка", "спорт", "встреча", "другое"}
 
 
-def _validate_llm_selection(item_ids: list[int], items: list) -> list | None:
+def _validate_llm_selection(
+    item_ids: list[int], items: list, weather: dict
+) -> list | None:
     """Проверить, что LLM выбрала валидный комплект.
 
     Возвращает список вещей или None, если выбор невалиден.
-    Учитываем, какие категории вообще есть в гардеробе: если обуви
-    в гардеробе нет, LLM не обязана её включать.
+    Учитываем:
+      - какие категории вообще есть в гардеробе (чтобы не требовать
+        от LLM того, чего у пользователя нет);
+      - требования по слоям для текущей температуры;
+      - цветовой бюджет (не больше MAX_COLOR_SCORE).
     """
     by_id = {item.id: item for item in items}
 
@@ -1772,6 +1777,7 @@ def _validate_llm_selection(item_ids: list[int], items: list) -> list | None:
     cats = {item.category for item in selected}
     wardrobe_cats = {item.category for item in items}
 
+    # 1. Проверка обязательных категорий
     has_top = "верх" in cats
     has_bottom = "низ" in cats
     has_shoes = "обувь" in cats
@@ -1780,15 +1786,43 @@ def _validate_llm_selection(item_ids: list[int], items: list) -> list | None:
         for item in selected
     )
 
-    # Проверяем только те категории, которые есть в гардеробе
     if "верх" in wardrobe_cats and not has_top:
-        logger.info("LLM-валидация: нет верха (хотя он есть в гардеробе)")
+        logger.info("LLM-валидация: нет верха")
         return None
     if "низ" in wardrobe_cats and not has_bottom and not has_dress:
-        logger.info("LLM-валидация: нет низа (и не платье)")
+        logger.info("LLM-валидация: нет низа")
         return None
     if "обувь" in wardrobe_cats and not has_shoes:
-        logger.info("LLM-валидация: нет обуви (хотя она есть в гардеробе)")
+        logger.info("LLM-валидация: нет обуви")
+        return None
+
+    # 2. Проверка слоёв
+    temp = weather.get("feels_like", weather.get("temp", 15))
+    if temp < 0:
+        req_layers = 3
+    elif temp <= 15:
+        req_layers = 2
+    else:
+        req_layers = 1
+
+    top_items = [i for i in selected if i.category == "верх"]
+    layers = set(getattr(i, "layer", "base") for i in top_items)
+
+    if not has_dress and len(layers) < req_layers:
+        logger.info(
+            "LLM-валидация: мало слоёв верха (%d < %d)",
+            len(layers), req_layers,
+        )
+        return None
+
+    # 3. Проверка цветового бюджета
+    from app.services.outfit import _color_score
+    total_color_score = sum(_color_score(i) for i in selected)
+    if total_color_score > 3.0:
+        logger.info(
+            "LLM-валидация: превышен цветовой бюджет (%.1f > 3.0)",
+            total_color_score,
+        )
         return None
 
     return selected
@@ -1936,7 +1970,7 @@ async def outfit_occasion_node(state: BotState) -> dict:
 
     if llm_selection:
         validated = _validate_llm_selection(
-            llm_selection["item_ids"], items
+            llm_selection["item_ids"], items, weather
         )
         if validated:
             selected_items = validated

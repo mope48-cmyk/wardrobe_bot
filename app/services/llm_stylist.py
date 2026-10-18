@@ -20,7 +20,7 @@ if settings.GIGACHAT_CREDENTIALS:
         scope="GIGACHAT_API_PERS",
         model="GigaChat-2-Pro",  # <--- Меняем на Pro!
         ca_bundle_file="/app/certs/russian_trusted_root_ca.pem",
-        temperature=0.1, # Делаем модель более строгой и предсказуемой
+        temperature=0.1,  # Делаем модель более строгой и предсказуемой
         max_tokens=500,
     )
 else:
@@ -33,22 +33,28 @@ SYSTEM_PROMPT = """Ты — опытный стилист. Тебе дан ФИ�
 
 ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА:
 1. В комплект ОБЯЗАТЕЛЬНО должны входить: 1 верх, 1 низ (или платье), 1 обувь.
-2. Обрати ВНИМАНИЕ на температуру. Если на улице +30°C, НЕЛЬЗЯ выбирать тёплые вещи (свитера, ботинки), даже если они есть в списке.
-3. Учитывай waterproof при осадках.
-4. Учитывай formal_level: работа/встреча → business, прогулка → casual, спорт → sport.
+2. Слои по температуре:
+   - Если на улице < 0°C, нужно 3 слоя одежды (базовый, средний, верхний). Выбери соответствующие вещи с нужным слоем.
+   - Если от 0°C до 15°C, нужно 2 слоя (базовый + средний или базовый + верхний).
+   - Если > 15°C, достаточно 1 слоя (базовый).
+3. Цветовой бюджет. В образе не должно быть больше 3 баллов за цвет.
+   - Серый (любой оттенок), чёрный и белый — 0.5 балла.
+   - Любой другой цвет — 1 балл.
+   Суммируй баллы всех выбранных вещей. Не превышай лимит в 3 балла!
+4. Учитывай waterproof при осадках.
+5. Учитывай formal_level: работа/встреча → business, прогулка → casual, спорт → sport.
 
 ВАЖНЕЙШЕЕ ПРАВИЛО:
 Ты должен использовать ТОЛЬКО те ID вещей, которые перечислены в списке ниже. 
 КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО выдумывать ID, брать их из примеров или использовать те, которых нет в предоставленном списке. 
-ID — это уникальные числа, привязанные к конкретным вещам.
 
-ФОРМАТ ОТВЕТА — СТРОГО JSON без markdown, без текста до и после. 
-Структура: 
+ФОРМАТ ОТВЕТА — СТРОГО JSON без markdown:
 {"item_ids": [СПИСОК_ЧИСЕЛ_ИЗ_СПИСКА], "explanation": "Текст объяснения"}
 
-В поле `explanation` опиши ТОЛЬКО те вещи, ID которых ты указал в `item_ids`. 
-Называй вещи ИМЕННО ТАК, как они написаны в списке.
+В поле `explanation` опиши ТОЛЬКО те вещи, ID которых ты указал в `item_ids`. Называй вещи ИМЕННО ТАК, как они написаны в списке.
 """
+
+
 async def select_outfit_with_llm(
     weather: dict, occasion: str, items: list
 ) -> dict | None:
@@ -67,7 +73,7 @@ async def select_outfit_with_llm(
     for cat, cat_items in by_cat.items():
         # Сортируем по убыванию рейтинга
         sorted_cat = sorted(
-            cat_items, 
+            cat_items,
             key=lambda i: -_score(i, formal, weather, occasion)
         )
         # Берем только 3 лучших в каждой категории
@@ -86,7 +92,7 @@ async def select_outfit_with_llm(
         except Exception:
             colors_list = []
         colors_str = ", ".join(colors_list) if colors_list else "—"
-        
+
         line = (
             f"id={item.id} | {item.category}/{item.type} | "
             f"цвета: {colors_str} | материал: {item.material or '—'} | "
@@ -98,7 +104,7 @@ async def select_outfit_with_llm(
         items_lines.append(line)
 
     items_text = "\n".join(items_lines)
-    
+
     temp = weather.get("feels_like", weather.get("temp", 15))
     desc = weather.get("description", "")
     wind = weather.get("wind_speed", 0)
@@ -123,8 +129,9 @@ async def select_outfit_with_llm(
 
     return _parse_llm_response(raw)
 
-# Функция _parse_llm_response остается без изменений
+
 def _parse_llm_response(raw: str) -> dict | None:
+    """Извлечь JSON из ответа LLM (может быть в markdown-обёртке)."""
     text = raw.strip()
     if text.startswith("```"):
         lines = [l for l in text.split("\n") if not l.strip().startswith("```")]
@@ -155,5 +162,8 @@ def _parse_llm_response(raw: str) -> dict | None:
         ids = [int(x) for x in ids]
     except (ValueError, TypeError):
         return None
+
+    if not isinstance(explanation, str):
+        explanation = ""
 
     return {"item_ids": ids, "explanation": explanation.strip()}
