@@ -16,7 +16,7 @@ from app.db.repository import (
 )
 from app.graph.state import BotState
 from app.services.llm_stylist import select_outfit_with_llm, generate_vasiliev_comment
-from app.services.outfit import select_outfit
+from app.services.outfit import select_outfit, OutfitResult
 from app.services.product_photo_bg import (
     is_generating,
     mark_generating,
@@ -1907,6 +1907,8 @@ async def outfit_start_node(state: BotState) -> dict:
         "occasion": None,
         "weather": None,
         "outfit": None,
+        "outfit_options": None,
+        "outfit_index": 0,
     }
 
 
@@ -1957,7 +1959,7 @@ async def outfit_location_node(state: BotState) -> dict:
 
 
 async def outfit_occasion_node(state: BotState) -> dict:
-    """Обработка повода: погода, подбор (LLM + fallback), отправка."""
+    """Обработка повода: получаем варианты, показываем сбалансированный."""
     text = (state.get("input_text") or "").strip().lower()
 
     if text not in VALID_OCCASIONS:
@@ -2019,43 +2021,14 @@ async def outfit_occasion_node(state: BotState) -> dict:
             "weather": weather,
         }
 
-    # --- 1. Пытаемся выбрать комплект через LLM ---
-    llm_selection = await select_outfit_with_llm(weather, text, list(items))
+    # Получаем список вариантов (от самого тёплого к лёгкому)
+    outfits = select_outfit(list(items), weather, text)
 
-    selected_items = None
-    strict_cats: set[str] = set()
-    relaxed_cats: set[str] = set()
-    missing_cats: set[str] = set()
-
-    if llm_selection:
-        validated = _validate_llm_selection(
-            llm_selection["item_ids"], items, weather
-        )
-        if validated:
-            selected_items = validated
-            logger.info(
-                "LLM выбрала комплект: ids=%s",
-                llm_selection["item_ids"],
-            )
-
-    # --- 2. Fallback на детерминированный алгоритм ---
-    if selected_items is None:
-        result = select_outfit(list(items), weather, text)
-        selected_items = result.items
-        strict_cats = result.strict_categories
-        relaxed_cats = result.relaxed_categories
-        missing_cats = result.missing_categories
-        logger.info(
-            "Fallback на select_outfit: %d вещей", len(selected_items),
-        )
-
-    if not selected_items:
+    if not outfits or (not outfits[0].items and outfits[0].no_candidates):
         return {
             "messages": [
                 AIMessage(
-                    content=(
-                        "Не удалось собрать комплект. Добавьте вещи через /add."
-                    ),
+                    content="Не удалось собрать комплект.",
                     additional_kwargs=_kb(MENU_KEYBOARD),
                 )
             ],
@@ -2063,119 +2036,163 @@ async def outfit_occasion_node(state: BotState) -> dict:
             "weather": weather,
         }
 
-    # --- 3. Заголовок с погодой ---
+    # Выбираем вариант посередине (самый сбалансированный)
+    best_idx = min(1, len(outfits) - 1) if len(outfits) > 1 else 0
+    best_outfit = outfits[best_idx]
+
+    # Формируем заголовок
     city_str = f" ({loc['city']})" if loc.get("city") else ""
     temp = weather["temp"]
     feels_like = weather.get("feels_like", temp)
     wind = weather.get("wind_speed", 0)
-    desc = weather["description"]
 
-    weather_line = f"🌤 <b>Погода{esc(city_str)}</b>: {desc}, {temp:.0f}°C"
+    weather_line = f"🌤 <b>Погода{esc(city_str)}</b>: {weather['description']}, {temp:.0f}°C"
     if abs(feels_like - temp) >= 2:
         weather_line += f" (ощущается как {feels_like:.0f}°C)"
     if wind > 3:
         weather_line += f", ветер {wind:.0f} м/с"
 
-    # --- 4. Формируем список вещей ---
-    lines = [f"{weather_line}\n<b>Повод:</b> {text}\n"]  # Заголовок
-
-    by_cat: dict[str, list] = {}
-    for item in selected_items:
-        by_cat.setdefault(item.category, []).append(item)
-
-    cat_labels = {
-        "верх": "👕 Верх",
-        "низ": "👖 Низ",
-        "обувь": "👟 Обувь",
-        "аксессуар": "🧢 Аксессуары",
-    }
-    cat_order = ["верх", "низ", "обувь", "аксессуар"]
-
-    for cat in cat_order:
-        cat_items = by_cat.get(cat)
-        if not cat_items:
-            continue
-        lines.append(f"<b>{cat_labels[cat]}:</b>")
-        for item in cat_items:
-            wp = " 💧" if item.waterproof else ""
-            mark = " ⚠️" if cat in relaxed_cats else ""
-            mat = f" ({item.material})" if item.material else ""
-            lines.append(
-                f"• {item.type}{mat} — тепло {item.warmth_level}/5, "
-                f"{item.formal_level}, {item.season}{wp}{mark}"
-            )
-        lines.append("")
-
-    if not llm_selection:  # Если fallback, показываем предупреждения
-        warnings: list[str] = []
-        if relaxed_cats:
-            relaxed_names = ", ".join(
-                {"верх": "верх", "низ": "низ", "обувь": "обувь"}
-                .get(c, c) for c in sorted(relaxed_cats)
-            )
-            warnings.append(
-                f"⚠️ Нет идеальных вещей по погоде для ({relaxed_names}), "
-                "показаны ближайшие."
-            )
-        if missing_cats:
-            missing_names = ", ".join(
-                {"верх": "верх", "низ": "низ", "обувь": "обувь"}
-                .get(c, c) for c in sorted(missing_cats)
-            )
-            warnings.append(f"ℹ️ В гардеробе нет: {missing_names}.")
-        if warnings:
-            lines.extend(warnings)
-            lines.append("")
-
-    # --- 5. Генерируем комментарий с учетом оставшегося места ---
-    base_text = "\n".join(lines).rstrip()
-
-    # Лимит Telegram — 1024 символа. Оставляем запас 60 символов
-    # на форматирование.
-    available_space = 1024 - len(base_text) - 60
-
-    # Жёсткие рамки: минимум 100 символов, максимум 450,
-    # чтобы модель не растекалась мыслью.
-    max_comment_chars = max(100, min(available_space, 450))
-
+    # Генерируем комментарий Васильева
     city_name = loc.get("city") or "вашем городе"
     comment = await generate_vasiliev_comment(
-        weather, city_name, text, selected_items,
-        max_chars=max_comment_chars,
+        weather, city_name, text, best_outfit.items, max_chars=350,
     )
-
     if not comment:
-        comment = (
-            "Ах, дорогие мои! Этот образ — просто спасение "
-            "для такой погоды!"
-        )
+        comment = "Ах, дорогие мои! Этот образ — просто спасение!"
 
-    # Вставляем комментарий после заголовка (индекс 1)
-    lines.insert(1, f"💬 <i>{esc(comment)}</i>\n")
+    # Собираем текст
+    lines = [f"{weather_line}\n<b>Повод:</b> {text}\n\n💬 <i>{esc(comment)}</i>\n"]
+    by_cat = {}
+    for item in best_outfit.items:
+        by_cat.setdefault(item.category, []).append(item)
+
+    for cat, label in [("верх", "👕 Верх"), ("низ", "👖 Низ"), ("обувь", "👟 Обувь")]:
+        if cat in by_cat:
+            lines.append(f"<b>{label}:</b>")
+            for item in by_cat[cat]:
+                wp = " 💧" if item.waterproof else ""
+                mat = f" ({item.material})" if item.material else ""
+                layer = f" [{getattr(item, 'layer', 'base')}]" if cat == "верх" else ""
+                lines.append(
+                    f"• {item.type}{layer}{mat} — тепло {item.warmth_level}/5{wp}"
+                )
+            lines.append("")
 
     caption = "\n".join(lines).rstrip()
-    if len(caption) > 1024:
-        caption = caption[:1020] + "…"
-
     photo_ids = [
         item.generated_photo_file_id or item.photo_file_id
-        for item in selected_items
+        for item in best_outfit.items
     ]
 
-    logger.info("Outfit photos: %s", photo_ids)
+    # Кнопки навигации (теплее/легче)
+    kb: list[list[dict]] = []
+    row: list[dict] = []
+    if best_idx > 0:
+        row.append({"text": "❄️ Чуть легче", "callback_data": "outfit:lighter"})
+    if best_idx < len(outfits) - 1:
+        row.append({"text": "🔥 Чуть теплее", "callback_data": "outfit:warmer"})
+    if row:
+        kb.append(row)
 
     return {
         "messages": [
             AIMessage(
                 content=caption,
-                additional_kwargs={"media_group": photo_ids},
+                additional_kwargs={
+                    "media_group": photo_ids,
+                    "inline_keyboard": kb,
+                },
             ),
             AIMessage(
-                content="Если хотите — подберите ещё раз: /outfit.",
+                content=(
+                    "Если хотите другой вариант, нажмите кнопки выше. "
+                    "Или /outfit заново."
+                ),
                 additional_kwargs=_kb(MENU_KEYBOARD),
             ),
         ],
-        "step": None, "intent": None,
-        "location": None, "weather": weather,
+        "step": None, "intent": None, "location": None,
+        "weather": weather,
         "occasion": text,
+        "outfit_options": outfits,
+        "outfit_index": best_idx,
+        "edit_message_id": state.get("edit_message_id"),
+    }
+
+
+async def outfit_variant_node(state: BotState) -> dict:
+    """Обработка нажатия кнопок 'Теплее' или 'Легче'."""
+    text = (state.get("input_text") or "").strip()
+    outfits = state.get("outfit_options") or []
+    idx = state.get("outfit_index") or 0
+
+    if not outfits:
+        return {
+            "messages": [
+                AIMessage(
+                    content="Данные устарели. Начните заново: /outfit",
+                    additional_kwargs=_kb(MENU_KEYBOARD),
+                )
+            ]
+        }
+
+    if text == "outfit:warmer" and idx < len(outfits) - 1:
+        idx += 1
+    elif text == "outfit:lighter" and idx > 0:
+        idx -= 1
+
+    # Берём нужный вариант
+    best_outfit = outfits[idx]
+    weather = state.get("weather") or {}
+    occasion = state.get("occasion") or "прогулка"
+    location = state.get("location") or {}
+    city_name = location.get("city") or "вашем городе"
+
+    comment = await generate_vasiliev_comment(
+        weather, city_name, occasion, best_outfit.items, max_chars=350,
+    )
+
+    # Формируем текст (аналогично основному узлу)
+    lines = [f"💬 <i>{esc(comment or 'Ах, вот это другой разговор!')}</i>\n"]
+    by_cat = {}
+    for item in best_outfit.items:
+        by_cat.setdefault(item.category, []).append(item)
+    for cat, label in [("верх", "👕 Верх"), ("низ", "👖 Низ"), ("обувь", "👟 Обувь")]:
+        if cat in by_cat:
+            lines.append(f"<b>{label}:</b>")
+            for item in by_cat[cat]:
+                wp = " 💧" if item.waterproof else ""
+                mat = f" ({item.material})" if item.material else ""
+                layer = f" [{getattr(item, 'layer', 'base')}]" if cat == "верх" else ""
+                lines.append(
+                    f"• {item.type}{layer}{mat} — тепло {item.warmth_level}/5{wp}"
+                )
+            lines.append("")
+
+    # Кнопки
+    kb: list[list[dict]] = []
+    row: list[dict] = []
+    if idx > 0:
+        row.append({"text": "❄️ Чуть легче", "callback_data": "outfit:lighter"})
+    if idx < len(outfits) - 1:
+        row.append({"text": "🔥 Чуть теплее", "callback_data": "outfit:warmer"})
+    if row:
+        kb.append(row)
+
+    return {
+        "messages": [
+            AIMessage(
+                content="\n".join(lines).rstrip(),
+                additional_kwargs={
+                    "media_group": [
+                        i.generated_photo_file_id or i.photo_file_id
+                        for i in best_outfit.items
+                    ],
+                    "inline_keyboard": kb,
+                    "edit_message_id": state.get("edit_message_id"),
+                    "edit_mode": "media",  # Перерисовываем медиагруппу
+                },
+            )
+        ],
+        "outfit_index": idx,
     }

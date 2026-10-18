@@ -75,6 +75,12 @@ def route_condition(state: BotState) -> str:
     if text == "list:make_product_photo":
         return "list_make_product_photo"
 
+    # 0.1. Callback'и навигации по вариантам образа (/outfit)
+    if text == "outfit:warmer":
+        return "outfit_variant"
+    if text == "outfit:lighter":
+        return "outfit_variant"
+
     # 1. Slash-команды (работают всегда, даже посреди диалога)
     if text.startswith("/"):
         cmd = text.split()[0].lower()
@@ -180,6 +186,7 @@ def build_graph():
     builder.add_node("outfit_start", nodes.outfit_start_node)
     builder.add_node("outfit_location", nodes.outfit_location_node)
     builder.add_node("outfit_occasion", nodes.outfit_occasion_node)
+    builder.add_node("outfit_variant", nodes.outfit_variant_node)
 
     # /add
     builder.add_node("add_start", nodes.add_start_node)
@@ -217,6 +224,7 @@ def build_graph():
             "outfit_start": "outfit_start",
             "outfit_location": "outfit_location",
             "outfit_occasion": "outfit_occasion",
+            "outfit_variant": "outfit_variant",
             "add_start": "add_start",
             "add_expect_photo": "add_expect_photo",
             "add_photo": "add_photo",
@@ -237,7 +245,7 @@ def build_graph():
         "list_toggle_photo", "list_make_product_photo",
         "list_delete_product_photo",
         "list_edit_field", "list_edit_choice", "list_edit_save", "list_edit_cancel",
-        "outfit_start", "outfit_location", "outfit_occasion",
+        "outfit_start", "outfit_location", "outfit_occasion", "outfit_variant",
         "add_start", "add_expect_photo", "add_photo",
         "add_confirm_category", "add_attribute",
         "add_color", "add_color_text", "add_layer",

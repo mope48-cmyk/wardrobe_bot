@@ -34,4 +34,8 @@ class BotState(TypedDict, total=False):
     edit_message_id: int | None
     show_original: bool
 
+    # Для /outfit: варианты подбора и текущий индекс
+    outfit_options: list | None  # Список всех вариантов (OutfitResult)
+    outfit_index: int            # Текущий индекс варианта
+
     error: str | None
