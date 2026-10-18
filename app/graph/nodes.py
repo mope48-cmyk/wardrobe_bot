@@ -15,7 +15,7 @@ from app.db.repository import (
     update_item_field,
 )
 from app.graph.state import BotState
-from app.services.llm_stylist import select_outfit_with_llm, generate_vasiliev_comment
+from app.services.llm_stylist import generate_vasiliev_comment
 from app.services.outfit import select_outfit, OutfitResult
 from app.services.product_photo_bg import (
     is_generating,
