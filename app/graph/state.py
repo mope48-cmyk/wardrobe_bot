@@ -35,7 +35,8 @@ class BotState(TypedDict, total=False):
     show_original: bool
 
     # Для /outfit: варианты подбора и текущий индекс
-    outfit_options: list | None  # Список всех вариантов (OutfitResult)
-    outfit_index: int            # Текущий индекс варианта
+    outfit_options: list[list[int]] | None  # Список вариантов, каждый — список ID вещей
+    outfit_index: int                       # Текущий индекс варианта
+    outfit_city: str | None                 # Название города для комментария
 
     error: str | None

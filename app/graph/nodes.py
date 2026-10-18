@@ -1909,6 +1909,7 @@ async def outfit_start_node(state: BotState) -> dict:
         "outfit": None,
         "outfit_options": None,
         "outfit_index": 0,
+        "outfit_city": None,
     }
 
 
@@ -2021,7 +2022,7 @@ async def outfit_occasion_node(state: BotState) -> dict:
             "weather": weather,
         }
 
-    # Получаем список вариантов (от самого тёплого к лёгкому)
+    # Получаем список вариантов
     outfits = select_outfit(list(items), weather, text)
 
     if not outfits or (not outfits[0].items and outfits[0].no_candidates):
@@ -2036,9 +2037,13 @@ async def outfit_occasion_node(state: BotState) -> dict:
             "weather": weather,
         }
 
-    # Выбираем вариант посередине (самый сбалансированный)
+    # Извлекаем только ID вещей из объектов, чтобы LangGraph смог сохранить состояние
+    outfit_ids = [[i.id for i in o.items] for o in outfits]
+
     best_idx = min(1, len(outfits) - 1) if len(outfits) > 1 else 0
     best_outfit = outfits[best_idx]
+
+    city_name = loc.get("city") or "вашем городе"
 
     # Формируем заголовок
     city_str = f" ({loc['city']})" if loc.get("city") else ""
@@ -2053,7 +2058,6 @@ async def outfit_occasion_node(state: BotState) -> dict:
         weather_line += f", ветер {wind:.0f} м/с"
 
     # Генерируем комментарий Васильева
-    city_name = loc.get("city") or "вашем городе"
     comment = await generate_vasiliev_comment(
         weather, city_name, text, best_outfit.items, max_chars=350,
     )
@@ -2079,6 +2083,7 @@ async def outfit_occasion_node(state: BotState) -> dict:
             lines.append("")
 
     caption = "\n".join(lines).rstrip()
+
     photo_ids = [
         item.generated_photo_file_id or item.photo_file_id
         for item in best_outfit.items
@@ -2112,21 +2117,21 @@ async def outfit_occasion_node(state: BotState) -> dict:
             ),
         ],
         "step": None, "intent": None, "location": None,
-        "weather": weather,
-        "occasion": text,
-        "outfit_options": outfits,
+        "outfit_options": outfit_ids,  # <-- Сохраняем только ID!
         "outfit_index": best_idx,
-        "edit_message_id": state.get("edit_message_id"),
+        "outfit_city": city_name,
+        "occasion": text,
+        "weather": weather,
     }
 
 
 async def outfit_variant_node(state: BotState) -> dict:
     """Обработка нажатия кнопок 'Теплее' или 'Легче'."""
     text = (state.get("input_text") or "").strip()
-    outfits = state.get("outfit_options") or []
+    outfits_ids = state.get("outfit_options") or []
     idx = state.get("outfit_index") or 0
 
-    if not outfits:
+    if not outfits_ids:
         return {
             "messages": [
                 AIMessage(
@@ -2136,27 +2141,33 @@ async def outfit_variant_node(state: BotState) -> dict:
             ]
         }
 
-    if text == "outfit:warmer" and idx < len(outfits) - 1:
+    if text == "outfit:warmer" and idx < len(outfits_ids) - 1:
         idx += 1
     elif text == "outfit:lighter" and idx > 0:
         idx -= 1
 
-    # Берём нужный вариант
-    best_outfit = outfits[idx]
+    # Получаем актуальные вещи из БД по сохраненным ID
+    all_items = await get_items(state["user_id"])
+    items_map = {i.id: i for i in all_items}
+    current_ids = outfits_ids[idx]
+    best_outfit_items = [items_map[i] for i in current_ids if i in items_map]
+
     weather = state.get("weather") or {}
+    city_name = state.get("outfit_city") or "вашем городе"
     occasion = state.get("occasion") or "прогулка"
-    location = state.get("location") or {}
-    city_name = location.get("city") or "вашем городе"
 
     comment = await generate_vasiliev_comment(
-        weather, city_name, occasion, best_outfit.items, max_chars=350,
+        weather, city_name, occasion, best_outfit_items, max_chars=350,
     )
+    if not comment:
+        comment = "Ах, вот это другой разговор!"
 
-    # Формируем текст (аналогично основному узлу)
-    lines = [f"💬 <i>{esc(comment or 'Ах, вот это другой разговор!')}</i>\n"]
+    # Формируем текст
+    lines = [f"💬 <i>{esc(comment)}</i>\n"]
     by_cat = {}
-    for item in best_outfit.items:
+    for item in best_outfit_items:
         by_cat.setdefault(item.category, []).append(item)
+
     for cat, label in [("верх", "👕 Верх"), ("низ", "👖 Низ"), ("обувь", "👟 Обувь")]:
         if cat in by_cat:
             lines.append(f"<b>{label}:</b>")
@@ -2174,7 +2185,7 @@ async def outfit_variant_node(state: BotState) -> dict:
     row: list[dict] = []
     if idx > 0:
         row.append({"text": "❄️ Чуть легче", "callback_data": "outfit:lighter"})
-    if idx < len(outfits) - 1:
+    if idx < len(outfits_ids) - 1:
         row.append({"text": "🔥 Чуть теплее", "callback_data": "outfit:warmer"})
     if row:
         kb.append(row)
@@ -2186,11 +2197,10 @@ async def outfit_variant_node(state: BotState) -> dict:
                 additional_kwargs={
                     "media_group": [
                         i.generated_photo_file_id or i.photo_file_id
-                        for i in best_outfit.items
+                        for i in best_outfit_items
                     ],
                     "inline_keyboard": kb,
                     "edit_message_id": state.get("edit_message_id"),
-                    "edit_mode": "media",  # Перерисовываем медиагруппу
                 },
             )
         ],
