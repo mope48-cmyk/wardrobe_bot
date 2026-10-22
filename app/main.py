@@ -11,6 +11,7 @@ from app.bot.handlers import router
 from app.bot.middlewares import AlbumMiddleware
 from app.config import settings
 from app.db.database import init_db
+from app.services.broadcast import send_release_broadcast
 from app.services.vision import warmup
 
 
@@ -54,6 +55,11 @@ async def main() -> None:
     logger.info("Прогрев моделей...")
     await asyncio.to_thread(warmup)
     logger.info("Прогрев завершён, запускаем polling")
+
+    # --- НОВЫЙ БЛОК: Проверка и рассылка релиза ---
+    logger.info("Проверка файла рассылки релиза...")
+    await send_release_broadcast(bot)
+    # ----------------------------------------------
 
     logger.info("Бот запускается. Нажмите Ctrl+C для остановки.")
     await dp.start_polling(bot)

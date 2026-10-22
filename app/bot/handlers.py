@@ -139,7 +139,9 @@ async def _send_ai_message(message: Message, ai_msg) -> None:
         * "caption" → edit_message_caption;
     - photo_file_id → answer_photo;
     - reply_keyboard / inline_keyboard;
-    - текст как fallback.
+    - текст как fallback (в т.ч. меню разделов — когда нет ни фото,
+      ни edit_message_id, отправляется новое текстовое сообщение,
+      а старое фото остаётся выше в истории — нормальное поведение Telegram).
     """
     extra = getattr(ai_msg, "additional_kwargs", None) or {}
 
@@ -222,7 +224,8 @@ async def _send_ai_message(message: Message, ai_msg) -> None:
         except Exception:
             logger.exception("Не удалось отправить фото, шлю текстом")
 
-    # 5. Текстовое сообщение
+    # 5. Текстовое сообщение (в т.ч. меню разделов — новый текст с кнопками,
+    #    старое фото остаётся выше в истории — нормальное поведение Telegram)
     await message.answer(ai_msg.content or "…", reply_markup=effective_markup)
 
 

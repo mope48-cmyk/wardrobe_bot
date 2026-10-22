@@ -141,3 +141,12 @@ def get_colors(item: WardrobeItem) -> list[str]:
     except Exception:
         logger.exception("Не удалось разобрать colors: %r", item.colors)
     return []
+
+
+async def get_all_user_ids() -> list[int]:
+    """Получить список уникальных ID всех пользователей из БД."""
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(WardrobeItem.user_id).distinct()
+        )
+        return [row[0] for row in result.all()]
