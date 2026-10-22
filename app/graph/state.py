@@ -39,4 +39,7 @@ class BotState(TypedDict, total=False):
     outfit_index: int                       # Текущий индекс варианта
     outfit_city: str | None                 # Название города для комментария
 
+    # Для /add из альбома: очередь file_id на добавление
+    album_queue: list[str] | None
+
     error: str | None

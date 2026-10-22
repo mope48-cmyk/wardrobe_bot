@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 router = Router(name="main_router")
 graph = build_graph()
 
+# Глобальный словарь блокировок для каждого пользователя
+user_locks: dict[int, asyncio.Lock] = {}
+
 
 def _thread_config(chat_id: int) -> dict:
     return {"configurable": {"thread_id": str(chat_id)}}
@@ -50,12 +53,23 @@ async def _extract_input(
         try:
             buffer = await message.bot.download(input_photo_file_id)
             input_photo_bytes = buffer.read()
-            logger.info(
-                "Скачано фото file_id=%s размер=%d байт",
-                input_photo_file_id, len(input_photo_bytes),
-            )
+            logger.info("Скачано фото file_id=%s", input_photo_file_id)
         except Exception:
-            logger.exception("Не удалось скачать фото из Telegram")
+            logger.exception("Не удалось скачать фото")
+
+    # НОВОЕ: Обработка, если фото отправлено как файл (документ)
+    elif (
+        message.document
+        and message.document.mime_type
+        and message.document.mime_type.startswith("image/")
+    ):
+        input_photo_file_id = message.document.file_id
+        try:
+            buffer = await message.bot.download(input_photo_file_id)
+            input_photo_bytes = buffer.read()
+            logger.info("Скачан файл-изображение file_id=%s", input_photo_file_id)
+        except Exception:
+            logger.exception("Не удалось скачать файл-изображение")
 
     if message.location:
         input_location = {
@@ -226,55 +240,122 @@ async def _send_ai_message(message: Message, ai_msg) -> None:
 
 
 @router.message()
-async def handle_message(message: Message) -> None:
-    """Единый обработчик всех сообщений."""
-    user = message.from_user
-    parsed = await _extract_input(message, edit_message_id=None)
+async def handle_message(message: Message, album: list[Message] = None) -> None:
+    """Единый обработчик всех сообщений.
 
-    if parsed["input_text"]:
-        human_content = parsed["input_text"]
-    elif parsed["input_photo_file_id"]:
-        human_content = "[фото]"
-    elif parsed["input_location"]:
-        human_content = "[геолокация]"
-    else:
-        human_content = "[неизвестный ввод]"
+    Параметр album приходит из AlbumMiddleware (если зарегистрирован),
+    когда пользователь отправил медиагруппу. Если album=None — обычное
+    сообщение.
+    """
+    user_id = message.from_user.id if message.from_user else 0
 
-    input_state = {
-        "messages": [HumanMessage(content=human_content)],
-        "user_id": user.id if user else 0,
-        "chat_id": message.chat.id,
-        **parsed,
-    }
+    # Защита от одновременной обработки
+    if user_id not in user_locks:
+        user_locks[user_id] = asyncio.Lock()
 
-    config = _thread_config(message.chat.id)
+    async with user_locks[user_id]:
+        # Логика для альбома
+        if album and len(album) > 1:
+            file_ids = [msg.photo[-1].file_id for msg in album if msg.photo]
+            if not file_ids:
+                return
 
-    try:
-        result = await graph.ainvoke(input_state, config=config)
-    except Exception:
-        logger.exception("Ошибка при вызове графа")
-        await message.answer("Что-то пошло не так. Попробуйте ещё раз.")
-        return
+            first_file_id = file_ids[0]
+            queue = file_ids[1:]
 
-    all_messages = result["messages"]
+            await message.answer(
+                f"Ах, вы прислали целый альбом из {len(album)} вещей! "
+                "Давайте добавим их по очереди. Начинаем с первой."
+            )
 
-    # Ищем последнее сообщение пользователя, чтобы взять только свежие ответы
-    last_human_idx = -1
-    for i, m in enumerate(all_messages):
-        if m.__class__.__name__ == "HumanMessage":
-            last_human_idx = i
+            buffer = await message.bot.download(first_file_id)
+            input_state = {
+                "messages": [HumanMessage(content="[фото из альбома]")],
+                "user_id": user_id,
+                "chat_id": message.chat.id,
+                "input_text": None,
+                "input_photo_file_id": first_file_id,
+                "input_photo_bytes": buffer.read(),
+                "input_location": None,
+                "album_queue": queue,
+            }
+        else:
+            parsed = await _extract_input(message, edit_message_id=None)
+            if parsed["input_text"]:
+                human_content = parsed["input_text"]
+            elif parsed["input_photo_file_id"]:
+                human_content = "[фото]"
+            elif parsed["input_location"]:
+                human_content = "[геолокация]"
+            else:
+                human_content = "[неизвестный ввод]"
 
-    new_ai_messages = [
-        m for m in all_messages[last_human_idx + 1:]
-        if m.__class__.__name__ == "AIMessage"
-    ]
+            input_state = {
+                "messages": [HumanMessage(content=human_content)],
+                "user_id": user_id,
+                "chat_id": message.chat.id,
+                **parsed,
+            }
 
-    if not new_ai_messages:
-        await message.answer("Нечего ответить.")
-        return
+        config = _thread_config(message.chat.id)
 
-    for ai_msg in new_ai_messages:
-        await _send_ai_message(message, ai_msg)
+        try:
+            result = await graph.ainvoke(input_state, config=config)
+        except Exception:
+            logger.exception("Ошибка при вызове графа")
+            await message.answer("Что-то пошло не так. Попробуйте ещё раз.")
+            return
+
+        # Отправляем ответы
+        all_messages = result["messages"]
+        last_human_idx = -1
+        for i, m in enumerate(all_messages):
+            if m.__class__.__name__ == "HumanMessage":
+                last_human_idx = i
+        new_ai_messages = [
+            m for m in all_messages[last_human_idx + 1:]
+            if m.__class__.__name__ == "AIMessage"
+        ]
+
+        for ai_msg in new_ai_messages:
+            await _send_ai_message(message, ai_msg)
+
+        # ПРОВЕРКА: если после сохранения вещи осталась очередь из альбома
+        next_queue = result.get("album_queue", [])
+        if next_queue:
+            next_file_id = next_queue[0]
+            remaining_queue = next_queue[1:]
+            await message.answer(
+                "Готово! Переходим к следующей вещи из вашего альбома..."
+            )
+
+            # Скачиваем следующее фото и запускаем процесс заново
+            buffer = await message.bot.download(next_file_id)
+            next_input = {
+                "messages": [HumanMessage(content="[фото из альбома]")],
+                "user_id": user_id,
+                "chat_id": message.chat.id,
+                "input_text": None,
+                "input_photo_file_id": next_file_id,
+                "input_photo_bytes": buffer.read(),
+                "input_location": None,
+                "album_queue": remaining_queue,
+                "step": "awaiting_photo",  # принудительно
+            }
+            res2 = await graph.ainvoke(next_input, config=config)
+
+            # Отправляем ответ для второй вещи
+            all_msgs2 = res2["messages"]
+            last_h_idx = max(
+                i for i, m in enumerate(all_msgs2)
+                if m.__class__.__name__ == "HumanMessage"
+            )
+            new_ai2 = [
+                m for m in all_msgs2[last_h_idx + 1:]
+                if m.__class__.__name__ == "AIMessage"
+            ]
+            for ai_msg in new_ai2:
+                await _send_ai_message(message, ai_msg)
 
 
 @router.callback_query()

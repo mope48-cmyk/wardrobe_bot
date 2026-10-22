@@ -296,9 +296,9 @@ def select_outfit(items: list[WardrobeItem], weather: dict, occasion: str) -> li
     for b in base_opts:
         for m in mid_opts:
             for o in outer_opts:
-                # Строгая иерархия (но если нет среднего слоя, верхний разрешен поверх базового)
-                if o and not b: continue  # Верхний слой требует хотя бы базовый
-                if m and not b: continue  # Средний слой требует базовый
+                # Строгая иерархия (если нет среднего, верхний разрешен поверх базового)
+                if o and not b: continue
+                if m and not b: continue
 
                 w_sum = sum(i.warmth_level for i in [b, m, o] if i)
                 if w_sum < target["top_min"] or w_sum > target["top_max"] + 1:

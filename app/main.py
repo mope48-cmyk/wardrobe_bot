@@ -8,6 +8,7 @@ from aiogram.client.telegram import TelegramAPIServer
 from aiogram.enums import ParseMode
 
 from app.bot.handlers import router
+from app.bot.middlewares import AlbumMiddleware
 from app.config import settings
 from app.db.database import init_db
 from app.services.vision import warmup
@@ -43,6 +44,7 @@ async def main() -> None:
     )
 
     dp = Dispatcher()
+    dp.message.middleware(AlbumMiddleware())  # <-- Добавить эту строку
     dp.include_router(router)
 
     await bot.delete_webhook(drop_pending_updates=True)

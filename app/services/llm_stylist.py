@@ -34,11 +34,17 @@ async def generate_vasiliev_comment(
 
     temp = weather.get("feels_like", weather.get("temp", 15))
     desc = weather.get("description", "")
-    
+
     items_text = "\n".join(
-        f"- {i.category} / {i.type} (цвет: {', '.join(get_colors(i)) if get_colors(i) else 'неизвестен'}, материал: {i.material or '—'})"
+        f"- {i.category} / {i.type} "
+        f"(цвет: {', '.join(get_colors(i)) if get_colors(i) else 'неизвестен'}, "
+        f"материал: {i.material or '—'}, тепло: {i.warmth_level}/5)"
         for i in items
     )
+
+    # Сумма тепла — чтобы LLM могла вычислить правило пункта 5
+    total_warmth = sum(i.warmth_level for i in items)
+    is_cold_catastrophe = temp < 10 and total_warmth < 8
 
     system_prompt = (
         "Ты — великий историк моды Александр Васильев. Твоя манера речи: театральная, экспрессивная, "
@@ -60,10 +66,18 @@ async def generate_vasiliev_comment(
         f"ВАЖНОЕ ОГРАНИЧЕНИЕ: Твой комментарий должен быть не длиннее {max_chars} символов!"
     )
 
+    # Если условие катастрофы выполнено — усиливаем подсказку явно
+    if is_cold_catastrophe:
+        system_prompt += (
+            "\n\n⚠️ ВНИМАНИЕ: Сейчас на улице холодно, а сумма тепла вещей меньше 8. "
+            "ПУНКТ 5 ОБЯЗАТЕЛЕН — ругай гардероб пользователя и предупреждай о замерзании!"
+        )
+
     user_prompt = (
         f"Место: {location}\n"
         f"Погода: {desc}, {temp:.0f}°C\n"
         f"Повод: {occasion}\n"
+        f"Сумма тепла вещей: {total_warmth} (из {len(items) * 5} возможных)\n"
         f"Мой подобранный комплект:\n{items_text}\n\n"
         f"Представь свой образ пользователю. Уложись в {max_chars} символов!"
     )
@@ -74,10 +88,10 @@ async def generate_vasiliev_comment(
             HumanMessage(content=user_prompt),
         ])
         text = response.content.strip()
-        
+
         if len(text) > max_chars:
             text = text[:max_chars - 3] + "..."
-            
+
         return text
     except Exception:
         logger.exception("Ошибка генерации комментария Васильева")
