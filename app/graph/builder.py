@@ -47,19 +47,19 @@ def _match_free_text_intent(text: str) -> str | None:
     lower = text.lower()
 
     # Интенты для гардероба
-    if any(k in lower for k in ["гардероб", "вещи", "одежда", "покажи", "шкаф", "список", "куртки", "штаны"]):
+    if any(k in lower for k in ["гардероб", "вещи", "одежда", "покажи", "шкаф", "список", "куртки", "штаны", "посмотреть", "показать"]):
         return "list"
 
     # Интенты для подбора образа
-    if any(k in lower for k in ["надеть", "образ", "подобрать", "одеть", "комплект", "выйти в свет", "прогулка"]):
+    if any(k in lower for k in ["надеть", "образ", "подобрать", "подбери", "подберите", "одеть", "комплект", "выйти в свет", "прогулка", "собрать", "собери"]):
         return "outfit_start"
 
     # Интенты для отмены
-    if any(k in lower for k in ["отмена", "отмени", "стоп", "хватит", "надоело"]):
+    if any(k in lower for k in ["отмена", "отмени", "стоп", "хватит", "надоело", "отменить"]):
         return "cancel"
 
     # Интенты для помощи
-    if any(k in lower for k in ["помощь", "справка", "умеешь", "команды", "инструкция"]):
+    if any(k in lower for k in ["помощь", "справка", "умеешь", "команды", "инструкция", "помоги"]):
         return "help"
 
     return None
@@ -70,116 +70,72 @@ def route_condition(state: BotState) -> str:
     text = (state.get("input_text") or "").strip()
     step = state.get("step")
 
-    # 0. Меню разделов /list (кнопки «К разделам» и категории)
-    if text == "list:menu":
-        return "list_menu"
-    if text.startswith("list:cat:"):
-        return "list_category"
+    # 0. Callback'и из inline-кнопок
+    if text == "list:prev": return "list_prev"
+    if text == "list:next": return "list_next"
+    if text.startswith("list:noop"): return "list_noop"
+    if text == "list:edit": return "list_edit"
+    if text == "list:edit:cancel": return "list_edit_cancel"
+    if text.startswith("list:edit:"): return "list_edit_field"
+    if text.startswith("list:set:"): return "list_edit_choice"
+    if text == "list:delete": return "list_delete"
+    if text == "list:delete_confirm": return "list_delete_do"
+    if text == "list:delete_cancel": return "list_delete_cancel"
+    if text == "list:toggle_photo": return "list_toggle_photo"
+    if text == "list:delete_product_photo": return "list_delete_product_photo"
+    if text == "list:make_product_photo": return "list_make_product_photo"
+    if text == "list:menu": return "list_menu"
+    if text.startswith("list:cat:"): return "list_category"
+    if text == "outfit:warmer": return "outfit_variant"
+    if text == "outfit:lighter": return "outfit_variant"
 
-    # 0.1. Callback'и из inline-кнопок (list:prev, list:next и т.д.)
-    if text == "list:prev":
-        return "list_prev"
-    if text == "list:next":
-        return "list_next"
-    if text.startswith("list:noop"):
-        return "list_noop"
-    if text == "list:edit":
-        return "list_edit"
-    if text == "list:edit:cancel":
-        return "list_edit_cancel"
-    if text.startswith("list:edit:"):
-        return "list_edit_field"
-    if text.startswith("list:set:"):
-        return "list_edit_choice"
-    if text == "list:delete":
-        return "list_delete"
-    if text == "list:delete_confirm":
-        return "list_delete_do"
-    if text == "list:delete_cancel":
-        return "list_delete_cancel"
-    if text == "list:toggle_photo":
-        return "list_toggle_photo"
-    if text == "list:delete_product_photo":
-        return "list_delete_product_photo"
-    if text == "list:make_product_photo":
-        return "list_make_product_photo"
-
-    # 0.2. Callback'и навигации по вариантам образа (/outfit)
-    if text == "outfit:warmer":
-        return "outfit_variant"
-    if text == "outfit:lighter":
-        return "outfit_variant"
-
-    # 1. Slash-команды (работают всегда, даже посреди диалога)
+    # 1. Slash-команды
     if text.startswith("/"):
         cmd = text.split()[0].lower()
-        if cmd == "/start":
-            return "start"
-        if cmd in ("/help", "/info"):
-            return "help"
-        if cmd == "/cancel":
-            return "cancel"
-        if cmd == "/add":
-            return "add_start"
-        if cmd == "/list":
-            return "list"
-        if cmd == "/outfit":
-            return "outfit_start"
+        if cmd == "/start": return "start"
+        if cmd in ("/help", "/info"): return "help"
+        if cmd == "/cancel": return "cancel"
+        if cmd == "/add": return "add_start"
+        if cmd == "/list": return "list"
+        if cmd == "/outfit": return "outfit_start"
 
-    # 2. Кнопки главного меню (точное совпадение после удаления эмодзи)
+    # 2. Кнопки главного меню
     menu_intent = _match_menu_button(text)
     if menu_intent:
         return menu_intent
 
-    # 3. Интенты из свободного текста (если мы не в середине диалога)
-    if not step:
+    # 3. Интенты из свободного текста (если мы НЕ в середине активного диалога)
+    active_dialogs = (
+        "awaiting_photo", "awaiting_category", "awaiting_type", "awaiting_color",
+        "awaiting_color_text", "awaiting_layer", "awaiting_warmth", "awaiting_waterproof",
+        "awaiting_formal", "awaiting_season", "awaiting_material", "awaiting_material_text",
+        "awaiting_location", "awaiting_occasion", "awaiting_confirm_category",
+        "list_edit_input", "list_edit_choice"
+    )
+    if step not in active_dialogs:
         free_intent = _match_free_text_intent(text)
         if free_intent:
             return free_intent
 
-    # 4. Фото вне активного диалога — сразу начинаем добавление вещи
+    # 4. Фото вне активного диалога
     if state.get("input_photo_file_id") and not step:
         return "add_photo"
 
-    # 5. Не команда — смотрим на текущий шаг
+    # 5. Текущий шаг диалога
     if step == "awaiting_photo":
-        if state.get("input_photo_file_id"):
-            return "add_photo"
+        if state.get("input_photo_file_id"): return "add_photo"
         return "add_expect_photo"
-
-    if step == "awaiting_confirm_category":
-        return "add_confirm_category"
-
-    if step == "awaiting_color":
-        return "add_color"
-    if step == "awaiting_color_text":
-        return "add_color_text"
-
-    if step == "awaiting_layer":
-        return "add_layer"
-
-    if step == "awaiting_location":
-        return "outfit_location"
-
-    if step == "awaiting_occasion":
-        return "outfit_occasion"
-
-    if step == "list_edit_input":
-        return "list_edit_save"
-
-    # На шаге выбора через кнопки — если пришёл текст (не callback),
-    # обрабатываем как свободный ввод через list_edit_save.
-    if step == "list_edit_choice" and not text.startswith("list:set:"):
-        return "list_edit_save"
-
-    if step == "awaiting_material":
-        return "add_material"
-
-    if step == "awaiting_material_text":
-        return "add_material_text"
-
-    if step and step.startswith("awaiting_"):
-        return "add_attribute"
+    if step == "awaiting_confirm_category": return "add_confirm_category"
+    if step == "awaiting_color": return "add_color"
+    if step == "awaiting_color_text": return "add_color_text"
+    if step == "awaiting_layer": return "add_layer"
+    if step == "awaiting_location": return "outfit_location"
+    if step == "awaiting_occasion": return "outfit_occasion"
+    if step == "list_edit_input": return "list_edit_save"
+    if step == "list_edit_choice" and not text.startswith("list:set:"): return "list_edit_save"
+    if step == "awaiting_material": return "add_material"
+    if step == "awaiting_material_text": return "add_material_text"
+    if step and step.startswith("awaiting_"): return "add_attribute"
 
     return "fallback"
 
