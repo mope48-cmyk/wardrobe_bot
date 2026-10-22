@@ -16,7 +16,7 @@ from app.db.repository import (
 )
 from app.graph.state import BotState
 from app.services.llm_stylist import generate_vasiliev_comment
-from app.services.outfit import select_outfit, OutfitResult
+from app.services.outfit import select_outfit, OutfitResult, _is_dress
 from app.services.product_photo_bg import (
     is_generating,
     mark_generating,
@@ -1846,16 +1846,13 @@ def _validate_llm_selection(
     has_top = "верх" in cats
     has_bottom = "низ" in cats
     has_shoes = "обувь" in cats
-    has_dress = any(
-        item.type.lower() in ("платье", "сарафан", "комбинезон")
-        for item in selected
-    )
+    has_dress = any(_is_dress(i) for i in selected)
 
     if "верх" in wardrobe_cats and not has_top:
         logger.info("LLM-валидация: нет верха")
         return None
     if "низ" in wardrobe_cats and not has_bottom and not has_dress:
-        logger.info("LLM-валидация: нет низа")
+        logger.info("LLM-валидация: нет низа (и нет платья)")
         return None
     if "обувь" in wardrobe_cats and not has_shoes:
         logger.info("LLM-валидация: нет обуви")
@@ -1864,12 +1861,12 @@ def _validate_llm_selection(
     # 3. Проверка иерархии слоёв
     top_items = [i for i in selected if i.category == "верх"]
     layers = {getattr(i, "layer", "base") for i in top_items}
-    
+
     # Верхний слой (outer) требует наличия базового (base)
     if "outer" in layers and "base" not in layers:
         logger.info("LLM-валидация: верхний слой (outer) без базового (base)")
         return None
-            
+
     # Средний слой (mid) требует наличия базового (base)
     if "mid" in layers and "base" not in layers:
         logger.info("LLM-валидация: средний слой (mid) без базового (base)")

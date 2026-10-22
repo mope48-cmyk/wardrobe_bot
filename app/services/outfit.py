@@ -8,6 +8,15 @@ from app.db.repository import get_colors
 
 logger = logging.getLogger(__name__)
 
+
+def _is_dress(item: WardrobeItem) -> bool:
+    """Платье/сарафан/комбинезон — отдельная категория «верх», не требующая низа."""
+    if not item:
+        return False
+    t = item.type.lower()
+    return any(k in t for k in ["платье", "сарафан", "комбинезон"])
+
+
 # ---------- Константы ----------
 
 CATEGORY_ORDER = {"верх": 0, "низ": 1, "обувь": 2, "аксессуар": 3}
@@ -121,11 +130,7 @@ def _get_targets(teff: float) -> dict:
 
 
 def _get_layer_targets(teff: float) -> dict:
-    """Отдельная цель warmth для base/mid/outer (п.2).
-
-    Всегда положительные значения (1–5), чтобы даже «ненужные»
-    слои штрафовались за избыточное тепло.
-    """
+    """Отдельная цель warmth для base/mid/outer (п.2)."""
     if teff >= 24:
         return {"base": 1, "mid": 2, "outer": 3}
     if teff >= 18:
@@ -508,15 +513,22 @@ def _select_outfit_fallback(
         return ranked[0]
 
     tops = by_cat.get("верх", [])
+    chosen_top = None
     if tops:
         strict = [i for i in tops if fits(i)]
-        it = pick(strict if strict else tops, "верх")
-        if it:
-            chosen.append(it)
+        chosen_top = pick(strict if strict else tops, "верх")
+        if chosen_top:
+            chosen.append(chosen_top)
     else:
         missing.add("верх")
 
+    # Если выбранное платье - низ не нужен
+    is_dress = _is_dress(chosen_top)
+
     for cat in ("низ", "обувь"):
+        if cat == "низ" and is_dress:
+            continue  # Пропускаем поиск низа
+
         cat_items = by_cat.get(cat, [])
         if not cat_items:
             missing.add(cat)
@@ -604,9 +616,16 @@ def select_outfit(
     shoes = top_n(shoes, "shoes")
 
     missing = set()
-    if not bases: missing.add("верх")
-    if not bottoms: missing.add("низ")
-    if not shoes: missing.add("обувь")
+    if not bases:
+        missing.add("верх")
+
+    # Проверяем, есть ли в гардеробе хоть одно платье
+    has_any_dress = any(_is_dress(i) for i in items)
+    if not bottoms and not has_any_dress:
+        missing.add("низ")
+
+    if not shoes:
+        missing.add("обувь")
 
     base_opts = bases if bases else [None]
     mid_opts = mids if mids else [None]
@@ -617,16 +636,22 @@ def select_outfit(
     # Генерируем комбинации
     raw_combos: list[list[WardrobeItem]] = []
     for b in base_opts:
+        is_b_dress = _is_dress(b)
+        # Если это платье - низ не перебираем
+        current_bottoms = [None] if is_b_dress else bottom_opts
+
         for m in mid_opts:
             for o in outer_opts:
-                if o and not b: continue
-                if m and not b: continue
+                if o and not b:
+                    continue
+                if m and not b:
+                    continue
 
                 w_sum = sum(i.warmth_level for i in [b, m, o] if i)
                 if w_sum < target["top_min"] or w_sum > target["top_max"] + 2:
                     continue
 
-                for bot in bottom_opts:
+                for bot in current_bottoms:
                     for sh in shoe_opts:
                         combo = [x for x in [b, m, o, bot, sh] if x]
                         if not combo:
