@@ -1909,6 +1909,7 @@ async def outfit_start_node(state: BotState) -> dict:
         "outfit_options": None,
         "outfit_index": 0,
         "outfit_city": None,
+        "outfit_relaxed": None,
     }
 
 
@@ -2036,8 +2037,9 @@ async def outfit_occasion_node(state: BotState) -> dict:
             "weather": weather,
         }
 
-    # Извлекаем только ID вещей из объектов, чтобы LangGraph смог сохранить состояние
+    # Извлекаем только ID вещей и флаги плохого стиля
     outfit_ids = [[i.id for i in o.items] for o in outfits]
+    outfit_relaxed = [list(o.relaxed_categories) for o in outfits]
 
     best_idx = min(1, len(outfits) - 1) if len(outfits) > 1 else 0
     best_outfit = outfits[best_idx]
@@ -2056,15 +2058,19 @@ async def outfit_occasion_node(state: BotState) -> dict:
     if wind > 3:
         weather_line += f", ветер {wind:.0f} м/с"
 
-    # Генерируем комментарий Васильева
+    # Генерируем комментарий Васильева с учётом флагов плохого стиля
     comment = await generate_vasiliev_comment(
-        weather, city_name, text, best_outfit.items, max_chars=350,
+        weather, city_name, text, best_outfit.items,
+        relaxed_categories=best_outfit.relaxed_categories,
+        max_chars=350,
     )
     if not comment:
         comment = "Ах, дорогие мои! Этот образ — просто спасение!"
 
     # Собираем текст
     lines = [f"{weather_line}\n<b>Повод:</b> {text}\n\n💬 <i>{esc(comment)}</i>\n"]
+    relaxed_cats = set(best_outfit.relaxed_categories)
+
     by_cat = {}
     for item in best_outfit.items:
         by_cat.setdefault(item.category, []).append(item)
@@ -2074,10 +2080,11 @@ async def outfit_occasion_node(state: BotState) -> dict:
             lines.append(f"<b>{label}:</b>")
             for item in by_cat[cat]:
                 wp = " 💧" if item.waterproof else ""
+                mark = " ⚠️" if item.category in relaxed_cats else ""
                 mat = f" ({item.material})" if item.material else ""
                 layer = f" [{getattr(item, 'layer', 'base')}]" if cat == "верх" else ""
                 lines.append(
-                    f"• {item.type}{layer}{mat} — тепло {item.warmth_level}/5{wp}"
+                    f"• {item.type}{layer}{mat} — тепло {item.warmth_level}/5{wp}{mark}"
                 )
             lines.append("")
 
@@ -2126,6 +2133,7 @@ async def outfit_occasion_node(state: BotState) -> dict:
         "outfit_options": outfit_ids,
         "outfit_index": best_idx,
         "outfit_city": city_name,
+        "outfit_relaxed": outfit_relaxed,
         "occasion": text,
         "weather": weather,
     }
@@ -2162,14 +2170,22 @@ async def outfit_variant_node(state: BotState) -> dict:
     city_name = state.get("outfit_city") or "вашем городе"
     occasion = state.get("occasion") or "прогулка"
 
+    # Достаем сохраненные флаги для текущего варианта
+    outfit_relaxed = state.get("outfit_relaxed") or []
+    current_relaxed = outfit_relaxed[idx] if idx < len(outfit_relaxed) else []
+
     comment = await generate_vasiliev_comment(
-        weather, city_name, occasion, best_outfit_items, max_chars=350,
+        weather, city_name, occasion, best_outfit_items,
+        relaxed_categories=current_relaxed,
+        max_chars=350,
     )
     if not comment:
         comment = "Ах, вот это другой разговор!"
 
     # Формируем текст
     lines = [f"💬 <i>{esc(comment)}</i>\n"]
+    relaxed_cats = set(current_relaxed)
+
     by_cat = {}
     for item in best_outfit_items:
         by_cat.setdefault(item.category, []).append(item)
@@ -2179,10 +2195,11 @@ async def outfit_variant_node(state: BotState) -> dict:
             lines.append(f"<b>{label}:</b>")
             for item in by_cat[cat]:
                 wp = " 💧" if item.waterproof else ""
+                mark = " ⚠️" if item.category in relaxed_cats else ""
                 mat = f" ({item.material})" if item.material else ""
                 layer = f" [{getattr(item, 'layer', 'base')}]" if cat == "верх" else ""
                 lines.append(
-                    f"• {item.type}{layer}{mat} — тепло {item.warmth_level}/5{wp}"
+                    f"• {item.type}{layer}{mat} — тепло {item.warmth_level}/5{wp}{mark}"
                 )
             lines.append("")
 

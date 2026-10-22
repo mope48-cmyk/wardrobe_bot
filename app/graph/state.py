@@ -38,6 +38,7 @@ class BotState(TypedDict, total=False):
     outfit_options: list[list[int]] | None  # Список вариантов, каждый — список ID вещей
     outfit_index: int                       # Текущий индекс варианта
     outfit_city: str | None                 # Название города для комментария
+    outfit_relaxed: list[list[str]] | None  # Флаги "плохого стиля" для каждого варианта
 
     # Для /add из альбома: очередь file_id на добавление
     album_queue: list[str] | None
