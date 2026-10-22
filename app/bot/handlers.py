@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 router = Router(name="main_router")
 graph = build_graph()
 
-# Глобальный словарь блокировок для каждого пользователя
+# Блокировка для предотвращения гонки данных
 user_locks: dict[int, asyncio.Lock] = {}
 
 
@@ -57,7 +57,6 @@ async def _extract_input(
         except Exception:
             logger.exception("Не удалось скачать фото")
 
-    # НОВОЕ: Обработка, если фото отправлено как файл (документ)
     elif (
         message.document
         and message.document.mime_type
@@ -166,27 +165,15 @@ async def _send_ai_message(message: Message, ai_msg) -> None:
                     )
                 )
             await message.answer_media_group(media=media)
+            # Inline-кнопки нельзя прикрепить к media_group — отправляем
+            # отдельным сообщением.
+            if inline_markup:
+                await message.answer(
+                    "Выберите действие:", reply_markup=inline_markup
+                )
             return
         except Exception:
-            logger.exception(
-                "Не удалось отправить media_group, отправляю текстом"
-            )
-            # фолбэк: первое фото с caption + текст, либо просто текст
-            if photo_file_id or media_group:
-                first = photo_file_id or media_group[0]
-                try:
-                    await message.answer_photo(
-                        photo=first,
-                        caption=ai_msg.content or "…",
-                        reply_markup=effective_markup,
-                    )
-                    return
-                except Exception:
-                    logger.exception("Фото тоже не отправилось")
-            await message.answer(
-                ai_msg.content or "…", reply_markup=effective_markup
-            )
-            return
+            logger.exception("Не удалось отправить media_group")
 
     # 2. Редактируем caption существующего сообщения
     if edit_message_id and edit_mode == "caption":
@@ -239,6 +226,47 @@ async def _send_ai_message(message: Message, ai_msg) -> None:
     await message.answer(ai_msg.content or "…", reply_markup=effective_markup)
 
 
+async def _process_next_album_item(message: Message, state: dict) -> None:
+    """Достаёт следующее фото из очереди альбома и запускает граф."""
+    queue = state.get("album_queue") or []
+    if not queue:
+        return
+
+    next_file_id = queue[0]
+    remaining_queue = queue[1:]
+
+    await message.answer(
+        "Готово! Переходим к следующей вещи из вашего альбома..."
+    )
+
+    buffer = await message.bot.download(next_file_id)
+    input_state = {
+        "messages": [HumanMessage(content="[фото из альбома]")],
+        "user_id": state["user_id"],
+        "chat_id": state["chat_id"],
+        "input_text": None,
+        "input_photo_file_id": next_file_id,
+        "input_photo_bytes": buffer.read(),
+        "input_location": None,
+        "album_queue": remaining_queue,
+        "step": "awaiting_photo",
+    }
+    config = _thread_config(state["chat_id"])
+
+    res = await graph.ainvoke(input_state, config=config)
+    all_msgs = res["messages"]
+    last_h_idx = max(
+        (i for i, m in enumerate(all_msgs) if m.__class__.__name__ == "HumanMessage"),
+        default=-1,
+    )
+    new_ai = [
+        m for m in all_msgs[last_h_idx + 1:]
+        if m.__class__.__name__ == "AIMessage"
+    ]
+    for ai_msg in new_ai:
+        await _send_ai_message(message, ai_msg)
+
+
 @router.message()
 async def handle_message(message: Message, album: list[Message] = None) -> None:
     """Единый обработчик всех сообщений.
@@ -247,14 +275,14 @@ async def handle_message(message: Message, album: list[Message] = None) -> None:
     когда пользователь отправил медиагруппу. Если album=None — обычное
     сообщение.
     """
-    user_id = message.from_user.id if message.from_user else 0
+    user = message.from_user
+    user_id = user.id if user else 0
 
-    # Защита от одновременной обработки
     if user_id not in user_locks:
         user_locks[user_id] = asyncio.Lock()
 
     async with user_locks[user_id]:
-        # Логика для альбома
+        # Обработка Альбома
         if album and len(album) > 1:
             file_ids = [msg.photo[-1].file_id for msg in album if msg.photo]
             if not file_ids:
@@ -267,8 +295,8 @@ async def handle_message(message: Message, album: list[Message] = None) -> None:
                 f"Ах, вы прислали целый альбом из {len(album)} вещей! "
                 "Давайте добавим их по очереди. Начинаем с первой."
             )
-
             buffer = await message.bot.download(first_file_id)
+
             input_state = {
                 "messages": [HumanMessage(content="[фото из альбома]")],
                 "user_id": user_id,
@@ -278,6 +306,7 @@ async def handle_message(message: Message, album: list[Message] = None) -> None:
                 "input_photo_bytes": buffer.read(),
                 "input_location": None,
                 "album_queue": queue,
+                "step": "awaiting_photo",
             }
         else:
             parsed = await _extract_input(message, edit_message_id=None)
@@ -298,7 +327,6 @@ async def handle_message(message: Message, album: list[Message] = None) -> None:
             }
 
         config = _thread_config(message.chat.id)
-
         try:
             result = await graph.ainvoke(input_state, config=config)
         except Exception:
@@ -306,12 +334,11 @@ async def handle_message(message: Message, album: list[Message] = None) -> None:
             await message.answer("Что-то пошло не так. Попробуйте ещё раз.")
             return
 
-        # Отправляем ответы
         all_messages = result["messages"]
-        last_human_idx = -1
-        for i, m in enumerate(all_messages):
-            if m.__class__.__name__ == "HumanMessage":
-                last_human_idx = i
+        last_human_idx = max(
+            (i for i, m in enumerate(all_messages) if m.__class__.__name__ == "HumanMessage"),
+            default=-1,
+        )
         new_ai_messages = [
             m for m in all_messages[last_human_idx + 1:]
             if m.__class__.__name__ == "AIMessage"
@@ -320,42 +347,9 @@ async def handle_message(message: Message, album: list[Message] = None) -> None:
         for ai_msg in new_ai_messages:
             await _send_ai_message(message, ai_msg)
 
-        # ПРОВЕРКА: если после сохранения вещи осталась очередь из альбома
-        next_queue = result.get("album_queue", [])
-        if next_queue:
-            next_file_id = next_queue[0]
-            remaining_queue = next_queue[1:]
-            await message.answer(
-                "Готово! Переходим к следующей вещи из вашего альбома..."
-            )
-
-            # Скачиваем следующее фото и запускаем процесс заново
-            buffer = await message.bot.download(next_file_id)
-            next_input = {
-                "messages": [HumanMessage(content="[фото из альбома]")],
-                "user_id": user_id,
-                "chat_id": message.chat.id,
-                "input_text": None,
-                "input_photo_file_id": next_file_id,
-                "input_photo_bytes": buffer.read(),
-                "input_location": None,
-                "album_queue": remaining_queue,
-                "step": "awaiting_photo",  # принудительно
-            }
-            res2 = await graph.ainvoke(next_input, config=config)
-
-            # Отправляем ответ для второй вещи
-            all_msgs2 = res2["messages"]
-            last_h_idx = max(
-                i for i, m in enumerate(all_msgs2)
-                if m.__class__.__name__ == "HumanMessage"
-            )
-            new_ai2 = [
-                m for m in all_msgs2[last_h_idx + 1:]
-                if m.__class__.__name__ == "AIMessage"
-            ]
-            for ai_msg in new_ai2:
-                await _send_ai_message(message, ai_msg)
+        # Если вещь сохранена (step=None) и есть очередь — запускаем следующую
+        if result.get("step") is None and result.get("album_queue"):
+            await _process_next_album_item(message, result)
 
 
 @router.callback_query()
@@ -387,45 +381,53 @@ async def handle_callback(callback: CallbackQuery) -> None:
     # Запоминаем id сообщения, чтобы отредактировать его, а не плодить новые
     edit_message_id = callback.message.message_id
 
-    input_state = {
-        "messages": [HumanMessage(content=data)],
-        "user_id": user.id,
-        "chat_id": callback.message.chat.id,
-        "input_text": data,
-        "input_photo_file_id": None,
-        "input_photo_bytes": None,
-        "input_location": None,
-        "edit_message_id": edit_message_id,
-    }
+    user_id = user.id
+    if user_id not in user_locks:
+        user_locks[user_id] = asyncio.Lock()
 
-    config = _thread_config(input_state["chat_id"])
-    try:
-        result = await graph.ainvoke(input_state, config=config)
-    except Exception:
-        logger.exception("Ошибка при вызове графа из callback")
-        await callback.message.answer("Что-то пошло не так.")
-        return
+    async with user_locks[user_id]:
+        input_state = {
+            "messages": [HumanMessage(content=data)],
+            "user_id": user_id,
+            "chat_id": callback.message.chat.id,
+            "input_text": data,
+            "input_photo_file_id": None,
+            "input_photo_bytes": None,
+            "input_location": None,
+            "edit_message_id": edit_message_id,
+        }
 
-    all_messages = result["messages"]
-    last_human_idx = -1
-    for i, m in enumerate(all_messages):
-        if m.__class__.__name__ == "HumanMessage":
-            last_human_idx = i
+        config = _thread_config(input_state["chat_id"])
+        try:
+            result = await graph.ainvoke(input_state, config=config)
+        except Exception:
+            logger.exception("Ошибка при вызове графа из callback")
+            await callback.message.answer("Что-то пошло не так.")
+            return
 
-    new_ai_messages = [
-        m for m in all_messages[last_human_idx + 1:]
-        if m.__class__.__name__ == "AIMessage"
-    ]
+        all_messages = result["messages"]
+        last_human_idx = max(
+            (i for i, m in enumerate(all_messages) if m.__class__.__name__ == "HumanMessage"),
+            default=-1,
+        )
+        new_ai_messages = [
+            m for m in all_messages[last_human_idx + 1:]
+            if m.__class__.__name__ == "AIMessage"
+        ]
 
-    for ai_msg in new_ai_messages:
-        await _send_ai_message(callback.message, ai_msg)
+        for ai_msg in new_ai_messages:
+            await _send_ai_message(callback.message, ai_msg)
 
-        extra = getattr(ai_msg, "additional_kwargs", None) or {}
-        cfg = extra.get("start_product_photo")
-        if cfg:
-            asyncio.create_task(generate_product_photo_bg(
-                bot=callback.bot,
-                chat_id=callback.message.chat.id,
-                card_message_id=callback.message.message_id,
-                **cfg,
-            ))
+            extra = getattr(ai_msg, "additional_kwargs", None) or {}
+            cfg = extra.get("start_product_photo")
+            if cfg:
+                asyncio.create_task(generate_product_photo_bg(
+                    bot=callback.bot,
+                    chat_id=callback.message.chat.id,
+                    card_message_id=callback.message.message_id,
+                    **cfg,
+                ))
+
+        # Если вещь сохранена и есть очередь — запускаем следующую
+        if result.get("step") is None and result.get("album_queue"):
+            await _process_next_album_item(callback.message, result)

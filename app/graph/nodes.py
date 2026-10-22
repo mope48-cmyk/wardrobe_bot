@@ -164,6 +164,7 @@ async def _persist_item(state: BotState, draft: dict) -> dict:
             )
         ],
         "step": None, "draft_item": None, "intent": None,
+        "album_queue": state.get("album_queue"),
     }
 
 
