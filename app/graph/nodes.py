@@ -244,7 +244,26 @@ async def cancel_node(state: BotState) -> dict:
 
 
 async def fallback_node(state: BotState) -> dict:
-    return {"messages": [AIMessage(content="Это просто катастрофа! Я вас совершенно не понимаю. Наберите /info, чтобы я напомнил вам правила хорошего тона.")]}
+    """Если бот не понял команду — генерируем ответ в стиле Васильева."""
+    user_text = state.get("input_text") or ""
+
+    # Импортируем функцию генерации
+    from app.services.llm_stylist import generate_chat_response
+
+    # Если пользователь написал что-то (не отправил пустое сообщение)
+    if user_text.strip():
+        response = await generate_chat_response(user_text)
+        return {"messages": [AIMessage(content=response, additional_kwargs=_kb(MENU_KEYBOARD))]}
+
+    # Запасной вариант, если пришел пустой текст или стикер
+    return {
+        "messages": [
+            AIMessage(
+                content="Ах, это просто катастрофа! Я вас совершенно не понимаю. Наберите /info, чтобы я напомнил вам правила хорошего тона.",
+                additional_kwargs=_kb(MENU_KEYBOARD),
+            )
+        ]
+    }
 
 
 async def stub_node(state: BotState) -> dict:

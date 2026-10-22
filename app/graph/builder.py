@@ -42,6 +42,29 @@ def _match_menu_button(text: str) -> str | None:
     return MENU_LABELS.get(cleaned)
 
 
+def _match_free_text_intent(text: str) -> str | None:
+    """Распознаем намерения пользователя по ключевым словам."""
+    lower = text.lower()
+
+    # Интенты для гардероба
+    if any(k in lower for k in ["гардероб", "вещи", "одежда", "покажи", "шкаф", "список", "куртки", "штаны"]):
+        return "list"
+
+    # Интенты для подбора образа
+    if any(k in lower for k in ["надеть", "образ", "подобрать", "одеть", "комплект", "выйти в свет", "прогулка"]):
+        return "outfit_start"
+
+    # Интенты для отмены
+    if any(k in lower for k in ["отмена", "отмени", "стоп", "хватит", "надоело"]):
+        return "cancel"
+
+    # Интенты для помощи
+    if any(k in lower for k in ["помощь", "справка", "умеешь", "команды", "инструкция"]):
+        return "help"
+
+    return None
+
+
 def route_condition(state: BotState) -> str:
     """Определить, в какой узел идти, на основе ввода и текущего шага."""
     text = (state.get("input_text") or "").strip()
@@ -108,11 +131,17 @@ def route_condition(state: BotState) -> str:
     if menu_intent:
         return menu_intent
 
-    # 3. Фото вне активного диалога — сразу начинаем добавление вещи
+    # 3. Интенты из свободного текста (если мы не в середине диалога)
+    if not step:
+        free_intent = _match_free_text_intent(text)
+        if free_intent:
+            return free_intent
+
+    # 4. Фото вне активного диалога — сразу начинаем добавление вещи
     if state.get("input_photo_file_id") and not step:
         return "add_photo"
 
-    # 4. Не команда — смотрим на текущий шаг
+    # 5. Не команда — смотрим на текущий шаг
     if step == "awaiting_photo":
         if state.get("input_photo_file_id"):
             return "add_photo"
