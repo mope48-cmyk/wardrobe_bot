@@ -312,6 +312,21 @@ def _item_caption(item) -> str:
     )
 
 
+def _category_menu_keyboard() -> list[list[dict]]:
+    """Клавиатура выбора раздела гардероба."""
+    return [
+        [
+            {"text": "👕 Верх", "callback_data": "list:cat:верх"},
+            {"text": "👖 Низ", "callback_data": "list:cat:низ"},
+        ],
+        [
+            {"text": "👟 Обувь", "callback_data": "list:cat:обувь"},
+            {"text": "🧢 Аксессуары", "callback_data": "list:cat:аксессуар"},
+        ],
+        [{"text": "📋 Все вещи", "callback_data": "list:cat:all"}],
+    ]
+
+
 def _list_keyboard(
     index: int,
     total: int,
@@ -356,6 +371,8 @@ def _list_keyboard(
             {"text": "⬅️ Назад", "callback_data": prev_cb},
             {"text": "Вперёд ➡️", "callback_data": next_cb},
         ],
+        # НОВАЯ КНОПКА: возврат в меню разделов
+        [{"text": "📁 К разделам", "callback_data": "list:menu"}],
     ]
 
 
@@ -460,25 +477,59 @@ async def _render_current(state: BotState, edit_mode: str = "media") -> dict:
 
 
 async def list_node(state: BotState) -> dict:
-    """/list — загружаем все вещи пользователя и показываем первую."""
-    user_id = state["user_id"]
-    items = await get_items(user_id)
+    """/list — показываем меню разделов."""
+    items = await get_items(state["user_id"])
+    if not items:
+        return {
+            "messages": [
+                AIMessage(
+                    content="Ваш гардероб пока пуст.\n\nДобавьте первую вещь командой /add.",
+                    additional_kwargs=_kb(MENU_KEYBOARD),
+                )
+            ],
+            "step": None, "intent": None,
+        }
+    return await list_menu_node(state)
+
+
+async def list_menu_node(state: BotState) -> dict:
+    """Показывает меню выбора категорий."""
+    return {
+        "messages": [
+            AIMessage(
+                content="Выберите раздел гардероба:",
+                additional_kwargs={"inline_keyboard": _category_menu_keyboard()},
+            )
+        ],
+        "step": "list_menu",
+        "intent": "list",
+        "list_ids": None,  # Сбрасываем текущий список
+        "list_index": 0,
+    }
+
+
+async def list_category_node(state: BotState) -> dict:
+    """Обрабатывает выбор категории из меню."""
+    text = (state.get("input_text") or "").strip()
+    # Из "list:cat:верх" достаем "верх"
+    category = text.split(":")[-1]
+
+    items = await get_items(state["user_id"])
+
+    # Фильтруем, если выбрана не "all"
+    if category != "all":
+        items = [i for i in items if i.category == category]
 
     if not items:
         return {
             "messages": [
                 AIMessage(
-                    content=(
-                        "Ваш гардероб пока пуст.\n\n"
-                        "Добавьте первую вещь командой /add."
-                    ),
-                    additional_kwargs=_kb(MENU_KEYBOARD),
+                    content="В этом разделе пока пусто.",
+                    additional_kwargs={"inline_keyboard": _category_menu_keyboard()},
                 )
             ],
-            "step": None, "intent": None,
-            "list_ids": None, "list_index": 0,
-            "edit_message_id": None,
-            "show_original": False,
+            "step": "list_menu",
+            "intent": "list",
         }
 
     ids = [item.id for item in items]
@@ -486,8 +537,8 @@ async def list_node(state: BotState) -> dict:
         **state,
         "list_ids": ids,
         "list_index": 0,
-        "list_source": "list",
-        "edit_message_id": None,
+        "list_filter": category,
+        "edit_message_id": None,  # Отправляем новое сообщение с фото
         "show_original": False,
     })
 

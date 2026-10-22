@@ -47,7 +47,13 @@ def route_condition(state: BotState) -> str:
     text = (state.get("input_text") or "").strip()
     step = state.get("step")
 
-    # 0. Callback'и из inline-кнопок (list:prev, list:next и т.д.)
+    # 0. Меню разделов /list (кнопки «К разделам» и категории)
+    if text == "list:menu":
+        return "list_menu"
+    if text.startswith("list:cat:"):
+        return "list_category"
+
+    # 0.1. Callback'и из inline-кнопок (list:prev, list:next и т.д.)
     if text == "list:prev":
         return "list_prev"
     if text == "list:next":
@@ -75,7 +81,7 @@ def route_condition(state: BotState) -> str:
     if text == "list:make_product_photo":
         return "list_make_product_photo"
 
-    # 0.1. Callback'и навигации по вариантам образа (/outfit)
+    # 0.2. Callback'и навигации по вариантам образа (/outfit)
     if text == "outfit:warmer":
         return "outfit_variant"
     if text == "outfit:lighter":
@@ -165,6 +171,8 @@ def build_graph():
 
     # /list и навигация по списку
     builder.add_node("list", nodes.list_node)
+    builder.add_node("list_menu", nodes.list_menu_node)
+    builder.add_node("list_category", nodes.list_category_node)
     builder.add_node("list_prev", nodes.list_prev_node)
     builder.add_node("list_next", nodes.list_next_node)
     builder.add_node("list_noop", nodes.list_noop_node)
@@ -207,6 +215,8 @@ def build_graph():
         {
             "start": "start", "help": "help", "cancel": "cancel",
             "fallback": "fallback", "stub": "stub", "list": "list",
+            "list_menu": "list_menu",
+            "list_category": "list_category",
             "list_prev": "list_prev",
             "list_next": "list_next",
             "list_noop": "list_noop",
@@ -240,6 +250,7 @@ def build_graph():
 
     terminal_nodes = [
         "start", "help", "cancel", "fallback", "stub", "list",
+        "list_menu", "list_category",
         "list_prev", "list_next", "list_noop", "list_edit", "list_delete",
         "list_delete_do", "list_delete_cancel",
         "list_toggle_photo", "list_make_product_photo",
