@@ -1863,18 +1863,16 @@ def _validate_llm_selection(
     # 3. Проверка иерархии слоёв
     top_items = [i for i in selected if i.category == "верх"]
     layers = {getattr(i, "layer", "base") for i in top_items}
-
-    # Если выбран верхний слой (outer) — обязаны быть base и mid
-    if "outer" in layers:
-        if not {"base", "mid"}.issubset(layers):
-            logger.info("LLM-валидация: верхний слой (outer) без базового (base) и среднего (mid)")
-            return None
-
-    # Если выбран средний слой (mid) — обязан быть base
-    if "mid" in layers:
-        if "base" not in layers:
-            logger.info("LLM-валидация: средний слой (mid) без базового (base)")
-            return None
+    
+    # Верхний слой (outer) требует наличия базового (base)
+    if "outer" in layers and "base" not in layers:
+        logger.info("LLM-валидация: верхний слой (outer) без базового (base)")
+        return None
+            
+    # Средний слой (mid) требует наличия базового (base)
+    if "mid" in layers and "base" not in layers:
+        logger.info("LLM-валидация: средний слой (mid) без базового (base)")
+        return None
 
     # 4. Проверка цветового бюджета
     from app.services.outfit import _color_score
