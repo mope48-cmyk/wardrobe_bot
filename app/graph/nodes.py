@@ -2227,7 +2227,12 @@ async def outfit_occasion_node(state: BotState) -> dict:
     for item in best_outfit.items:
         by_cat.setdefault(item.category, []).append(item)
 
-    for cat, label in [("верх", "👕 Верх"), ("низ", "👖 Низ"), ("обувь", "👟 Обувь")]:
+    for cat, label in [
+        ("верх", "👕 Верх"),
+        ("низ", "👖 Низ"),
+        ("обувь", "👟 Обувь"),
+        ("аксессуар", "🧢 Аксессуары"),
+    ]:
         if cat in by_cat:
             lines.append(f"<b>{label}:</b>")
             for item in by_cat[cat]:
@@ -2342,7 +2347,12 @@ async def outfit_variant_node(state: BotState) -> dict:
     for item in best_outfit_items:
         by_cat.setdefault(item.category, []).append(item)
 
-    for cat, label in [("верх", "👕 Верх"), ("низ", "👖 Низ"), ("обувь", "👟 Обувь")]:
+    for cat, label in [
+        ("верх", "👕 Верх"),
+        ("низ", "👖 Низ"),
+        ("обувь", "👟 Обувь"),
+        ("аксессуар", "🧢 Аксессуары"),
+    ]:
         if cat in by_cat:
             lines.append(f"<b>{label}:</b>")
             for item in by_cat[cat]:
