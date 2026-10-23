@@ -231,7 +231,6 @@ def _layer_order_ok(combo: list[WardrobeItem]) -> bool:
 def _accessory_matches(
     item: WardrobeItem, teff: float, wind: float, is_wet: bool
 ) -> bool:
-    """п.5 + п.9 + п.10: единая температура + учёт ветра/осадков."""
     t = item.type.lower()
 
     hat_kw = ("шапк", "бини", "шляп", "кепк", "панам", "бейсбол")
@@ -239,16 +238,20 @@ def _accessory_matches(
     rain_kw = ("зонт", "дождевик", "плащ")
     sun_kw = ("очки", "солнцезащит", "панам", "бейсбол", "кепк")
 
-    if teff < 0:
-        return any(k in t for k in hat_kw + warm_acc_kw)
+    # 1. Если идет дождь — зонт нужен при любой температуре
+    if is_wet and any(k in t for k in rain_kw):
+        return True
+
+    # 2. Холодная погода
     if teff < 5:
         return any(k in t for k in hat_kw + warm_acc_kw)
     if teff < 10 and wind > 8:
         return any(k in t for k in warm_acc_kw)
-    if is_wet and any(k in t for k in rain_kw):
-        return True
+
+    # 3. Жаркая погода
     if teff > 24 and any(k in t for k in sun_kw):
         return True
+
     return False
 
 
@@ -263,27 +266,43 @@ def _pick_accessories(
     """Подобрать до 2 аксессуаров под погоду, повод и цветовой бюджет."""
     accs = []
     for i in items:
-        if i.category != "аксессуар": continue
+        if i.category != "аксессуар":
+            continue
 
-        # 1. Проверка погоды
-        if not _accessory_matches(i, teff, wind, is_wet): continue
+        # 1. Проверка погоды (проходит ли аксессуар под текущую температуру/дождь)
+        if not _accessory_matches(i, teff, wind, is_wet):
+            continue
 
-        # 2. Проверка повода (если повод не "другое", проверяем список)
-        if occasion != "другое":
+        # 2. Проверка повода.
+        # ВАЖНОЕ ИСКЛЮЧЕНИЕ: Если это зонт и идет дождь, мы ИГНОРИРУЕМ список поводов.
+        is_umbrella_in_rain = is_wet and "зонт" in i.type.lower()
+
+        if not is_umbrella_in_rain and occasion != "другое":
             acc_occasions = get_accessory_occasions(i)
             if acc_occasions and occasion not in acc_occasions:
                 continue
 
         accs.append(i)
 
-    # Сортируем по стилю
-    accs.sort(key=lambda a: _get_style_priority(a.formal_level, occasion), reverse=True)
-
     selected = []
     budget = current_color_score
 
+    # 3. Приоритетное добавление зонта
+    if is_wet:
+        umbrellas = [a for a in accs if "зонт" in a.type.lower()]
+        if umbrellas:
+            best_umbrella = umbrellas[0]
+            selected.append(best_umbrella)
+            budget += _color_score(best_umbrella)
+            accs.remove(best_umbrella) # Убираем, чтобы не добавить его еще раз ниже
+
+    # 4. Добираем остальные аксессуары (до 2 штук)
+    accs.sort(key=lambda a: _get_style_priority(a.formal_level, occasion), reverse=True)
+
     for acc in accs:
-        if len(selected) >= 2: break # Максимум 2 аксессуара
+        if len(selected) >= 2:
+            break # Максимум 2 аксессуара в образе
+
         c_score = _color_score(acc)
         if budget + c_score <= MAX_COLOR_SCORE:
             selected.append(acc)
