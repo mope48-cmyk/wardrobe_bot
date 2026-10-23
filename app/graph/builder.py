@@ -14,6 +14,7 @@ MENU_LABELS: dict[str, str] = {
     "добавить вещь": "add_start",
     "мой гардероб": "list",
     "подобрать образ": "outfit_start",
+    "мой стиль": "dna_start",          # ← НОВОЕ
     "помощь": "help",
     "справка": "help",
     "отмена": "cancel",
@@ -45,6 +46,11 @@ def _match_menu_button(text: str) -> str | None:
 def _match_free_text_intent(text: str) -> str | None:
     """Распознаем намерения пользователя по ключевым словам."""
     lower = text.lower()
+
+    # Стилевой ДНК-тест — проверяем первым, чтобы «покажи мой стиль»
+    # не попадал в лист-интент из-за слова «покажи».
+    if any(k in lower for k in ["днк", "мой стиль", "стилевой профиль", "профиль стиля"]):
+        return "dna_start"
 
     # Интенты для гардероба
     if any(k in lower for k in ["гардероб", "вещи", "одежда", "покажи", "шкаф", "список", "куртки", "штаны", "посмотреть", "показать"]):
@@ -98,6 +104,7 @@ def route_condition(state: BotState) -> str:
         if cmd == "/add": return "add_start"
         if cmd == "/list": return "list"
         if cmd == "/outfit": return "outfit_start"
+        if cmd == "/dna": return "dna_start"
 
     # 2. Кнопки главного меню
     menu_intent = _match_menu_button(text)
@@ -195,6 +202,9 @@ def build_graph():
     builder.add_node("outfit_occasion", nodes.outfit_occasion_node)
     builder.add_node("outfit_variant", nodes.outfit_variant_node)
 
+    # /dna
+    builder.add_node("dna_start", nodes.dna_start_node)
+
     # /add
     builder.add_node("add_start", nodes.add_start_node)
     builder.add_node("add_expect_photo", nodes.add_expect_photo_node)
@@ -235,6 +245,7 @@ def build_graph():
             "outfit_location": "outfit_location",
             "outfit_occasion": "outfit_occasion",
             "outfit_variant": "outfit_variant",
+            "dna_start": "dna_start",
             "add_start": "add_start",
             "add_expect_photo": "add_expect_photo",
             "add_photo": "add_photo",
@@ -258,6 +269,7 @@ def build_graph():
         "list_delete_product_photo",
         "list_edit_field", "list_edit_choice", "list_edit_save", "list_edit_cancel",
         "outfit_start", "outfit_location", "outfit_occasion", "outfit_variant",
+        "dna_start",
         "add_start", "add_expect_photo", "add_photo",
         "add_confirm_category", "add_attribute",
         "add_color", "add_color_text", "add_layer",

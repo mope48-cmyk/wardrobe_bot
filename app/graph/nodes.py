@@ -74,7 +74,8 @@ REMOVE_KB = "remove"
 # Подписи на русском с эмодзи. Маршрутизация по ним — в builder.route_condition.
 MENU_KEYBOARD = [
     ["👕 Мой гардероб", "🌤 Подобрать образ"],
-    ["❓ Справка", "❌ Отмена"],
+    ["🧬 Мой стиль", "❓ Справка"],
+    ["❌ Отмена"],
 ]
 
 
@@ -297,6 +298,95 @@ async def fallback_node(state: BotState) -> dict:
                 additional_kwargs=_kb(MENU_KEYBOARD),
             )
         ]
+    }
+
+
+async def dna_start_node(state: BotState) -> dict:
+    """Стилевой ДНК-тест: анализ гардероба + комментарий Васильева."""
+    from app.services.style_dna import (
+        MIN_ITEMS_FOR_DNA,
+        analyze_wardrobe,
+        profile_to_llm_brief,
+    )
+    from app.services.llm_stylist import generate_dna_comment
+
+    items = await get_items(state["user_id"])
+
+    if not items:
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        "Боже мой, гардероб пуст! Пришлите мне хотя бы "
+                        f"{MIN_ITEMS_FOR_DNA} вещей через /add — и я составлю "
+                        "ваш стилевой портрет."
+                    ),
+                    additional_kwargs=_kb(MENU_KEYBOARD),
+                )
+            ],
+            "step": None, "intent": None,
+        }
+
+    if len(items) < MIN_ITEMS_FOR_DNA:
+        need = MIN_ITEMS_FOR_DNA - len(items)
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        f"Для ДНК-профиля нужно минимум {MIN_ITEMS_FOR_DNA} "
+                        f"вещей. У вас {len(items)}. Пришлите ещё {need} — "
+                        "и я разберу ваш стиль по косточкам!"
+                    ),
+                    additional_kwargs=_kb(MENU_KEYBOARD),
+                )
+            ],
+            "step": None, "intent": None,
+        }
+
+    profile = analyze_wardrobe(list(items))
+    brief = profile_to_llm_brief(profile)
+    comment = await generate_dna_comment(brief, max_chars=500)
+
+    if not comment:
+        comment = (
+            "Боже мой, вдохновение покинуло меня! Но по цифрам вижу: "
+            "стиль у вас есть, и его надо развивать."
+        )
+
+    # Короткая сводка цифр — чтобы пользователь видел «факты», а не только текст
+    style_top = profile.dominant_style
+    top_colors_str = (
+        ", ".join(c for c, _ in profile.top_colors) or "—"
+    )
+    gaps_str = "; ".join(profile.gaps) if profile.gaps else "пробелов нет"
+
+    summary = (
+        "🧬 <b>Ваш стилевой ДНК</b>\n\n"
+        f"💬 <i>{esc(comment)}</i>\n\n"
+        "📊 <b>Факты из гардероба:</b>\n"
+        f"• вещей: <b>{profile.total_items}</b>\n"
+        f"• доминирующий стиль: <b>{style_top}</b>\n"
+        f"• топ-цвета: {esc(top_colors_str)}\n"
+        f"• средний уровень тепла: {profile.avg_warmth:.1f}/5\n"
+        f"• профиль тепла: {esc(profile.warmth_label)}\n"
+        f"• пробелы: {esc(gaps_str)}"
+    )
+
+    return {
+        "messages": [
+            AIMessage(
+                content=summary,
+                additional_kwargs={
+                    "inline_keyboard": [
+                        [
+                            {"text": "👕 К гардеробу", "callback_data": "list:menu"},
+                        ]
+                    ],
+                },
+            )
+        ],
+        "step": None,
+        "intent": None,
     }
 
 
