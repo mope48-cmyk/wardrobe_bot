@@ -25,8 +25,13 @@ async def add_item(
     formal_level: str = "casual",
     season: str = "универсальная",
     layer: str = "base",
+    accessory_occasions: list[str] | None = None,  # <-- ДОБАВИТЬ ЭТО
 ) -> WardrobeItem:
-    """Добавить вещь. colors — список от 0 до 3 цветов."""
+    """Добавить вещь. colors — список от 0 до 3 цветов.
+
+    accessory_occasions — список поводов для аксессуаров
+    (например, ["работа", "прогулка"]). Для не-аксессуаров — пустой список.
+    """
     async with SessionLocal() as session:
         item = WardrobeItem(
             user_id=user_id,
@@ -40,6 +45,9 @@ async def add_item(
             formal_level=formal_level,
             season=season,
             layer=layer,
+            accessory_occasions=json.dumps(
+                accessory_occasions or [], ensure_ascii=False
+            ),  # <-- И ЭТО
         )
         session.add(item)
         await session.commit()
@@ -140,6 +148,22 @@ def get_colors(item: WardrobeItem) -> list[str]:
             return [str(c) for c in data][:3]
     except Exception:
         logger.exception("Не удалось разобрать colors: %r", item.colors)
+    return []
+
+
+def get_accessory_occasions(item: WardrobeItem) -> list[str]:
+    """Разобрать JSON-поле accessory_occasions в список. Возвращает [] при ошибке."""
+    if not getattr(item, "accessory_occasions", None):
+        return []
+    try:
+        data = json.loads(item.accessory_occasions)
+        if isinstance(data, list):
+            return [str(o) for o in data]
+    except Exception:
+        logger.exception(
+            "Не удалось разобрать accessory_occasions: %r",
+            item.accessory_occasions,
+        )
     return []
 
 

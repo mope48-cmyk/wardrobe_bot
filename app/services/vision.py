@@ -56,10 +56,11 @@ ENGLISH_LABELS = [
     "a puffer jacket",
     "a leather jacket",
     "a denim jacket",
-    "a suit jacket", "a blazer",
+    "a suit jacket", "a blazer", "a tailored jacket", "a formal jacket",
     "a bomber jacket", "a parka", "a trench coat",
     "a sweater", "a knitted sweater", "a wool sweater",
-    "a hoodie", "a sweatshirt", "a cardigan",
+    "a hoodie", "a zip-up hoodie", "a pullover hoodie",
+    "a sweatshirt", "a cardigan",
     "a vest", "a turtleneck", "a long-sleeve shirt",
     "a shirt", "a t-shirt", "a polo shirt",
     "a blouse", "a top", "a tank top",
@@ -79,6 +80,7 @@ ENGLISH_LABELS = [
     # Аксессуары
     "a hat", "a beanie", "a cap", "a scarf", "gloves",
     "a belt", "a bag", "a backpack",
+    "an umbrella", "an open umbrella", "a closed umbrella",
     # Негативные
     "a landscape", "a room interior", "furniture",
     "food", "an animal", "a person's face",
@@ -97,14 +99,18 @@ LABEL_MAP = {
     "a leather jacket": ("кожаная куртка", "верх"),
     "a denim jacket": ("джинсовая куртка", "верх"),
     "a suit jacket": ("пиджак", "верх"),
-    "a blazer": ("блейзер", "верх"),
+    "a blazer": ("пиджак", "верх"),
+    "a tailored jacket": ("пиджак", "верх"),
+    "a formal jacket": ("пиджак", "верх"),
     "a bomber jacket": ("бомбер", "верх"),
     "a parka": ("парка", "верх"),
     "a trench coat": ("тренч", "верх"),
     "a sweater": ("свитер", "верх"),
     "a knitted sweater": ("вязаный свитер", "верх"),
     "a wool sweater": ("шерстяной свитер", "верх"),
-    "a hoodie": ("толстовка", "верх"),
+    "a hoodie": ("худи", "верх"),
+    "a zip-up hoodie": ("худи", "верх"),
+    "a pullover hoodie": ("худи", "верх"),
     "a sweatshirt": ("свитшот", "верх"),
     "a cardigan": ("кардиган", "верх"),
     "a vest": ("жилет", "верх"),
@@ -149,6 +155,9 @@ LABEL_MAP = {
     "a belt": ("ремень", "аксессуар"),
     "a bag": ("сумка", "аксессуар"),
     "a backpack": ("рюкзак", "аксессуар"),
+    "an umbrella": ("зонт", "аксессуар"),
+    "an open umbrella": ("зонт", "аксессуар"),
+    "a closed umbrella": ("зонт", "аксессуар"),
 }
 
 NEGATIVE_LABELS = {
@@ -176,6 +185,7 @@ TYPE_DEFAULTS = {
     "свитер":              (4, False, "casual", "зима", "mid"),
     "вязаный свитер":      (4, False, "casual", "зима", "mid"),
     "шерстяной свитер":    (5, False, "casual", "зима", "mid"),
+    "худи":                (3, False, "casual", "демисезон", "mid"),
     "толстовка":           (3, False, "casual", "демисезон", "mid"),
     "свитшот":             (3, False, "casual", "демисезон", "mid"),
     "кардиган":            (3, False, "casual", "демисезон", "mid"),
@@ -214,6 +224,7 @@ TYPE_DEFAULTS = {
     "ремень":              (1, False, "business", "универсальная", "none"),
     "сумка":               (1, False, "casual", "универсальная", "none"),
     "рюкзак":              (1, False, "casual", "универсальная", "none"),
+    "зонт":                (1, True,  "casual", "универсальная", "none"),
 }
 
 
