@@ -27,7 +27,7 @@ if settings.GIGACHAT_CREDENTIALS:
         model="GigaChat-2-Pro",
         ca_bundle_file="/app/certs/russian_trusted_root_ca.pem",
         temperature=0.3,
-        max_tokens=700,
+        max_tokens=2000,                 # ← было 700
         auto_upload_attachments=True,  # для мультимодальности в 0.5.x
     )
 else:
@@ -51,10 +51,11 @@ def _prepare_image_b64(photo_bytes: bytes) -> str | None:
         return None
 
 
-async def generate_verdict_vasiliev(
-    photo_bytes: bytes, max_chars: int = 500
-) -> str | None:
-    """Сгенерировать «приговор» образу по фото в стиле Васильева."""
+async def generate_verdict_vasiliev(photo_bytes: bytes) -> str | None:
+    """Сгенерировать «приговор» образу по фото в стиле Васильева.
+
+    Длина не ограничивается — разбиением на сообщения занимается nodes.py.
+    """
     if _llm is None:
         return None
 
@@ -79,7 +80,8 @@ async def generate_verdict_vasiliev(
         "Говори от первого лица: 'Я вижу...', 'Мне открывается...', "
         "'Я бы посоветовал...'. Ссылайся на то, что РЕАЛЬНО видно на фото. "
         "Не выдумывай вещи, которых нет.\n\n"
-        f"ВАЖНО: не длиннее {max_chars} символов."
+        "Излагай мысль развёрнуто — не бойся быть подробным, но избегай воды. "
+        "Если рекомендаций несколько — перечисли их по пунктам."
     )
 
     user_content = [
@@ -95,10 +97,7 @@ async def generate_verdict_vasiliev(
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_content),
         ])
-        text = response.content.strip()
-        if len(text) > max_chars:
-            text = text[: max_chars - 3] + "..."
-        return text
+        return response.content.strip()   # ← без обрезки
     except Exception:
         logger.exception("Ошибка генерации приговора от Васильева")
         return None

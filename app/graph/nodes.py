@@ -428,6 +428,46 @@ async def verdict_expect_photo_node(state: BotState) -> dict:
     }
 
 
+# Telegram: лимит 4096 символов на сообщение. Берём 3800 —
+# запас под HTML-теги, заголовок и «<i>…</i>».
+_TG_VERDICT_CHUNK = 3800
+
+
+def _split_verdict_for_telegram(
+    text: str, limit: int = _TG_VERDICT_CHUNK
+) -> list[str]:
+    """Разбить длинный текст на части <= limit.
+
+    Стараемся резать по границе предложения (`. `, `! `, `? `, перевод строки),
+    чтобы не рвать фразу пополам. Если границы нет — режем по символу.
+    """
+    if len(text) <= limit:
+        return [text]
+
+    parts: list[str] = []
+    rest = text
+    while len(rest) > limit:
+        window = rest[:limit]
+        cut = max(
+            window.rfind(". "),
+            window.rfind("! "),
+            window.rfind("? "),
+            window.rfind("\n"),
+        )
+        # Если нашли границу во второй половине окна — режем по ней.
+        # Иначе — жёстко по limit (лучше так, чем промахнуться).
+        if cut < limit // 2:
+            cut = limit
+        else:
+            cut += 1  # захватываем точку/!/? после пробела
+        parts.append(rest[:cut].rstrip())
+        rest = rest[cut:].lstrip()
+
+    if rest:
+        parts.append(rest)
+    return parts
+
+
 async def verdict_photo_node(state: BotState) -> dict:
     from app.services.verdict import generate_verdict_vasiliev
 
@@ -445,7 +485,7 @@ async def verdict_photo_node(state: BotState) -> dict:
             ],
         }
 
-    verdict = await generate_verdict_vasiliev(image_bytes, max_chars=500)
+    verdict = await generate_verdict_vasiliev(image_bytes)
     if not verdict:
         return {
             "messages": [
@@ -460,14 +500,26 @@ async def verdict_photo_node(state: BotState) -> dict:
             "step": None, "intent": None,
         }
 
-    text = (
-        "⚖️ <b>Приговор от Васильева</b>\n\n"
-        f"💬 <i>{esc(verdict)}</i>"
-    )
+    chunks = _split_verdict_for_telegram(verdict)
+
+    messages: list[AIMessage] = []
+    for i, chunk in enumerate(chunks):
+        if i == 0:
+            content = (
+                "⚖️ <b>Приговор от Васильева</b>\n\n"
+                f"💬 <i>{esc(chunk)}</i>"
+            )
+        else:
+            content = f"💬 <i>{esc(chunk)}</i>"
+
+        # Меню на каждой части — чтобы не висела старая клавиатура
+        # «❌ Отмена» с шага awaiting_verdict_photo.
+        messages.append(
+            AIMessage(content=content, additional_kwargs=_kb(MENU_KEYBOARD))
+        )
+
     return {
-        "messages": [
-            AIMessage(content=text, additional_kwargs=_kb(MENU_KEYBOARD))
-        ],
+        "messages": messages,
         "step": None, "intent": None,
     }
 
