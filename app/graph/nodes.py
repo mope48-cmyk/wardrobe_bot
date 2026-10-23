@@ -45,6 +45,7 @@ STEP_KEYBOARDS: dict[str, list[list[str]]] = {
     "awaiting_formal": [["casual", "business", "sport"], ["❌ Отмена"]],
     "awaiting_season": [["лето", "демисезон"], ["зима", "универсальная"], ["❌ Отмена"]],
     "awaiting_location": [["❌ Отмена"]],
+    "awaiting_verdict_photo": [["❌ Отмена"]],   # ← НОВОЕ
     "awaiting_material": [
         ["Хлопок", "Шерсть"],
         ["Кожа", "Деним"],
@@ -74,8 +75,8 @@ REMOVE_KB = "remove"
 # Подписи на русском с эмодзи. Маршрутизация по ним — в builder.route_condition.
 MENU_KEYBOARD = [
     ["👕 Мой гардероб", "🌤 Подобрать образ"],
-    ["🧬 Мой стиль", "❓ Справка"],
-    ["❌ Отмена"],
+    ["🧬 Мой стиль", "⚖️ Приговор"],
+    ["❓ Справка", "❌ Отмена"],
 ]
 
 
@@ -387,6 +388,87 @@ async def dna_start_node(state: BotState) -> dict:
         ],
         "step": None,
         "intent": None,
+    }
+
+
+# ---------- /verdict: «Приговор от Васильева» ----------
+
+VERDICT_START_TEXT = (
+    "Боже мой, вы готовы предстать перед моим судом? Пришлите фотографию "
+    "в полный рост — и я вынесу вердикт вашему образу. Только честно!"
+)
+
+VERDICT_EXPECT_TEXT = (
+    "Я всё ещё жду вашу фотографию в полный рост! Без неё приговора не будет."
+)
+
+
+async def verdict_start_node(state: BotState) -> dict:
+    return {
+        "messages": [
+            AIMessage(
+                content=VERDICT_START_TEXT,
+                additional_kwargs=_kb_for_step("awaiting_verdict_photo"),
+            )
+        ],
+        "intent": "verdict",
+        "step": "awaiting_verdict_photo",
+        "draft_item": None,
+    }
+
+
+async def verdict_expect_photo_node(state: BotState) -> dict:
+    return {
+        "messages": [
+            AIMessage(
+                content=VERDICT_EXPECT_TEXT,
+                additional_kwargs=_kb_for_step("awaiting_verdict_photo"),
+            )
+        ],
+    }
+
+
+async def verdict_photo_node(state: BotState) -> dict:
+    from app.services.verdict import generate_verdict_vasiliev
+
+    image_bytes = state.get("input_photo_bytes")
+    if not image_bytes:
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        "Боже мой, я не могу разглядеть фото! Пришлите "
+                        "ещё раз — лучше в полный рост."
+                    ),
+                    additional_kwargs=_kb_for_step("awaiting_verdict_photo"),
+                )
+            ],
+        }
+
+    verdict = await generate_verdict_vasiliev(image_bytes, max_chars=500)
+    if not verdict:
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        "Катастрофа! Мой внутренний критик сегодня молчит. "
+                        "Попробуйте позже или пришлите другое фото."
+                    ),
+                    additional_kwargs=_kb(MENU_KEYBOARD),
+                )
+            ],
+            "step": None, "intent": None,
+        }
+
+    text = (
+        "⚖️ <b>Приговор от Васильева</b>\n\n"
+        f"💬 <i>{esc(verdict)}</i>"
+    )
+    return {
+        "messages": [
+            AIMessage(content=text, additional_kwargs=_kb(MENU_KEYBOARD))
+        ],
+        "step": None, "intent": None,
     }
 
 

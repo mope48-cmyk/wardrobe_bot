@@ -15,6 +15,7 @@ MENU_LABELS: dict[str, str] = {
     "мой гардероб": "list",
     "подобрать образ": "outfit_start",
     "мой стиль": "dna_start",          # ← НОВОЕ
+    "приговор": "verdict_start",       # ← НОВОЕ
     "помощь": "help",
     "справка": "help",
     "отмена": "cancel",
@@ -46,6 +47,13 @@ def _match_menu_button(text: str) -> str | None:
 def _match_free_text_intent(text: str) -> str | None:
     """Распознаем намерения пользователя по ключевым словам."""
     lower = text.lower()
+
+    # Приговор от Васильева — первым, т.к. может пересекаться с "образ"
+    if any(k in lower for k in [
+        "приговор", "вердикт", "оцени меня", "оцени мой образ",
+        "оцени образ", "что скажешь про образ",
+    ]):
+        return "verdict_start"
 
     # Стилевой ДНК-тест — проверяем первым, чтобы «покажи мой стиль»
     # не попадал в лист-интент из-за слова «покажи».
@@ -105,6 +113,7 @@ def route_condition(state: BotState) -> str:
         if cmd == "/list": return "list"
         if cmd == "/outfit": return "outfit_start"
         if cmd == "/dna": return "dna_start"
+        if cmd == "/verdict": return "verdict_start"
 
     # 2. Кнопки главного меню
     menu_intent = _match_menu_button(text)
@@ -127,6 +136,7 @@ def route_condition(state: BotState) -> str:
         "awaiting_material_text",
         "awaiting_location",
         "awaiting_occasion",
+        "awaiting_verdict_photo",
         "awaiting_confirm_category",
         "awaiting_accessory_occasion",
         "list_edit_input",
@@ -156,6 +166,9 @@ def route_condition(state: BotState) -> str:
     if step == "awaiting_material": return "add_material"
     if step == "awaiting_material_text": return "add_material_text"
     if step == "awaiting_accessory_occasion": return "add_accessory_occasion"
+    if step == "awaiting_verdict_photo":
+        if state.get("input_photo_file_id"): return "verdict_photo"
+        return "verdict_expect_photo"
     if step and step.startswith("awaiting_"): return "add_attribute"
 
     return "fallback"
@@ -205,6 +218,11 @@ def build_graph():
     # /dna
     builder.add_node("dna_start", nodes.dna_start_node)
 
+    # /verdict
+    builder.add_node("verdict_start", nodes.verdict_start_node)
+    builder.add_node("verdict_expect_photo", nodes.verdict_expect_photo_node)
+    builder.add_node("verdict_photo", nodes.verdict_photo_node)
+
     # /add
     builder.add_node("add_start", nodes.add_start_node)
     builder.add_node("add_expect_photo", nodes.add_expect_photo_node)
@@ -246,6 +264,9 @@ def build_graph():
             "outfit_occasion": "outfit_occasion",
             "outfit_variant": "outfit_variant",
             "dna_start": "dna_start",
+            "verdict_start": "verdict_start",
+            "verdict_expect_photo": "verdict_expect_photo",
+            "verdict_photo": "verdict_photo",
             "add_start": "add_start",
             "add_expect_photo": "add_expect_photo",
             "add_photo": "add_photo",
@@ -270,6 +291,7 @@ def build_graph():
         "list_edit_field", "list_edit_choice", "list_edit_save", "list_edit_cancel",
         "outfit_start", "outfit_location", "outfit_occasion", "outfit_variant",
         "dna_start",
+        "verdict_start", "verdict_expect_photo", "verdict_photo",
         "add_start", "add_expect_photo", "add_photo",
         "add_confirm_category", "add_attribute",
         "add_color", "add_color_text", "add_layer",
