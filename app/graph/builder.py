@@ -106,11 +106,24 @@ def route_condition(state: BotState) -> str:
 
     # 3. Интенты из свободного текста (если мы НЕ в середине активного диалога)
     active_dialogs = (
-        "awaiting_photo", "awaiting_category", "awaiting_type", "awaiting_color",
-        "awaiting_color_text", "awaiting_layer", "awaiting_warmth", "awaiting_waterproof",
-        "awaiting_formal", "awaiting_season", "awaiting_material", "awaiting_material_text",
-        "awaiting_location", "awaiting_occasion", "awaiting_confirm_category",
-        "list_edit_input", "list_edit_choice"
+        "awaiting_photo",
+        "awaiting_category",
+        "awaiting_type",
+        "awaiting_color",
+        "awaiting_color_text",
+        "awaiting_layer",
+        "awaiting_warmth",
+        "awaiting_waterproof",
+        "awaiting_formal",
+        "awaiting_season",
+        "awaiting_material",
+        "awaiting_material_text",
+        "awaiting_location",
+        "awaiting_occasion",
+        "awaiting_confirm_category",
+        "awaiting_accessory_occasion",
+        "list_edit_input",
+        "list_edit_choice"
     )
     if step not in active_dialogs:
         free_intent = _match_free_text_intent(text)
@@ -135,6 +148,7 @@ def route_condition(state: BotState) -> str:
     if step == "list_edit_choice" and not text.startswith("list:set:"): return "list_edit_save"
     if step == "awaiting_material": return "add_material"
     if step == "awaiting_material_text": return "add_material_text"
+    if step == "awaiting_accessory_occasion": return "add_accessory_occasion"
     if step and step.startswith("awaiting_"): return "add_attribute"
 
     return "fallback"
@@ -192,6 +206,7 @@ def build_graph():
     builder.add_node("add_attribute", nodes.add_attribute_node)
     builder.add_node("add_material", nodes.add_material_node)
     builder.add_node("add_material_text", nodes.add_material_text_node)
+    builder.add_node("add_accessory_occasion", nodes.add_accessory_occasion_node)
 
     builder.add_edge(START, "router")
     builder.add_conditional_edges(
@@ -230,6 +245,7 @@ def build_graph():
             "add_attribute": "add_attribute",
             "add_material": "add_material",
             "add_material_text": "add_material_text",
+            "add_accessory_occasion": "add_accessory_occasion",
         },
     )
 
@@ -245,7 +261,7 @@ def build_graph():
         "add_start", "add_expect_photo", "add_photo",
         "add_confirm_category", "add_attribute",
         "add_color", "add_color_text", "add_layer",
-        "add_material", "add_material_text",
+        "add_material", "add_material_text", "add_accessory_occasion",
     ]
     for name in terminal_nodes:
         builder.add_edge(name, END)
