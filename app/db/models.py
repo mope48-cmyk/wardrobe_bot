@@ -60,6 +60,10 @@ class WardrobeItem(Base):
     # Слой одежды: "base", "mid", "outer", "none"
     layer: Mapped[str] = mapped_column(String(32), default="base")
 
+    # Для аксессуаров: список поводов, для которых они подходят.
+    # Формат JSON: '["работа", "прогулка"]'
+    accessory_occasions: Mapped[str] = mapped_column(Text, default="[]")
+
     # Дата добавления
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
