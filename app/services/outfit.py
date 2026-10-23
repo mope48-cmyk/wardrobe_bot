@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass, field
 
 from app.db.models import WardrobeItem
-from app.db.repository import get_colors
+from app.db.repository import get_colors, get_accessory_occasions
 
 logger = logging.getLogger(__name__)
 
@@ -252,28 +252,44 @@ def _accessory_matches(
     return False
 
 
-def _pick_accessory(
+def _pick_accessories(
     items: list[WardrobeItem],
     teff: float,
     wind: float,
     is_wet: bool,
     occasion: str,
-) -> WardrobeItem | None:
-    """п.5: подобрать 1 аксессуар под погоду."""
-    accs = [
-        i for i in items
-        if i.category == "аксессуар" and _accessory_matches(i, teff, wind, is_wet)
-    ]
-    if not accs:
-        return None
+    current_color_score: float
+) -> list[WardrobeItem]:
+    """Подобрать до 2 аксессуаров под погоду, повод и цветовой бюджет."""
+    accs = []
+    for i in items:
+        if i.category != "аксессуар": continue
 
-    def score(a: WardrobeItem) -> float:
-        return _get_style_priority(a.formal_level, occasion)
+        # 1. Проверка погоды
+        if not _accessory_matches(i, teff, wind, is_wet): continue
 
-    accs.sort(key=score, reverse=True)
-    if score(accs[0]) < STYLE_HARD_CUT:
-        return None
-    return accs[0]
+        # 2. Проверка повода (если повод не "другое", проверяем список)
+        if occasion != "другое":
+            acc_occasions = get_accessory_occasions(i)
+            if acc_occasions and occasion not in acc_occasions:
+                continue
+
+        accs.append(i)
+
+    # Сортируем по стилю
+    accs.sort(key=lambda a: _get_style_priority(a.formal_level, occasion), reverse=True)
+
+    selected = []
+    budget = current_color_score
+
+    for acc in accs:
+        if len(selected) >= 2: break # Максимум 2 аксессуара
+        c_score = _color_score(acc)
+        if budget + c_score <= MAX_COLOR_SCORE:
+            selected.append(acc)
+            budget += c_score
+
+    return selected
 
 
 def _slot_of(item: WardrobeItem) -> str:
@@ -296,6 +312,11 @@ def _score_item(
     """Скор одной вещи с учётом style-приоритета."""
     priority = _get_style_priority(item.formal_level, occasion)
     if priority < STYLE_HARD_CUT:
+        return -1000.0
+
+    # ЖЕСТКИЙ ЗАПРЕТ: летние вещи при температуре ниже 12 градусов
+    item_type = item.type.lower()
+    if teff < 12 and any(k in item_type for k in ["шорт", "сандал", "майк", "топ", "панам"]):
         return -1000.0
 
     if slot == "top":
@@ -438,6 +459,11 @@ def _score_old(
     if priority < STYLE_HARD_CUT:
         return -1000.0
 
+    # ЖЕСТКИЙ ЗАПРЕТ: летние вещи при температуре ниже 12 градусов
+    item_type = item.type.lower()
+    if teff < 12 and any(k in item_type for k in ["шорт", "сандал", "майк", "топ", "панам"]):
+        return -1000.0
+
     s = priority * 50
 
     if has_precip and item.waterproof:
@@ -538,11 +564,13 @@ def _select_outfit_fallback(
         if it:
             chosen.append(it)
 
-    acc = _pick_accessory(
-        items, teff, wind, weather.get("has_precipitation", False), occasion
+    # Аксессуары — до 2 штук, с учётом текущего цветового бюджета
+    current_color_score = sum(_color_score(i) for i in chosen)
+    picked_accs = _pick_accessories(
+        items, teff, wind, weather.get("has_precipitation", False),
+        occasion, current_color_score=current_color_score,
     )
-    if acc:
-        chosen.append(acc)
+    chosen.extend(picked_accs)
 
     chosen.sort(key=lambda i: CATEGORY_ORDER.get(i.category, 9))
 
@@ -691,16 +719,20 @@ def select_outfit(
     if not picked:
         picked = scored[:5]
 
-    # п.5: аксессуар — один для всех вариантов
-    accessory = _pick_accessory(items, teff, wind, is_wet, occasion)
-
     results: list[OutfitResult] = []
     for combo, score, reasons in picked:
         combo_with_acc = list(combo)
-        if accessory and not any(i.category == "аксессуар" for i in combo_with_acc):
-            current_color = sum(_color_score(i) for i in combo_with_acc)
-            if current_color + _color_score(accessory) <= MAX_COLOR_SCORE:
-                combo_with_acc.append(accessory)
+
+        # п.5: аксессуары — до 2 штук под текущий комплект
+        if not any(i.category == "аксессуар" for i in combo_with_acc):
+            current_color_score = sum(
+                _color_score(i) for i in combo_with_acc
+            )
+            picked_accs = _pick_accessories(
+                items, teff, wind, is_wet, occasion,
+                current_color_score=current_color_score,
+            )
+            combo_with_acc.extend(picked_accs)
 
         combo_with_acc.sort(key=lambda i: CATEGORY_ORDER.get(i.category, 9))
 
