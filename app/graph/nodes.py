@@ -62,6 +62,12 @@ MATERIAL_KEYBOARD = [
     ["Другое", "❌ Отмена"],
 ]
 
+ACCESSORY_OCCASIONS_KB = [
+    ["работа", "прогулка"],
+    ["спорт", "встреча"],
+    ["Готово", "❌ Отмена"],
+]
+
 REMOVE_KB = "remove"
 
 # Главное меню. Используется после /start, /cancel, сохранения вещи и т.п.
@@ -132,6 +138,7 @@ async def _persist_item(state: BotState, draft: dict) -> dict:
             formal_level=draft.get("formal_level", "casual"),
             season=draft.get("season", "универсальная"),
             layer=draft.get("layer", "base"),
+            accessory_occasions=draft.get("accessory_occasions", []),
         )
     except Exception as e:
         logger.exception("Ошибка сохранения вещи")
@@ -166,6 +173,33 @@ async def _persist_item(state: BotState, draft: dict) -> dict:
         "step": None, "draft_item": None, "intent": None,
         "album_queue": state.get("album_queue"),
     }
+
+
+async def _persist_or_ask_accessory(
+    state: BotState, draft: dict
+) -> dict:
+    """Сохранить вещь или, если это аксессуар, спросить поводы.
+
+    Для не-аксессуаров — сразу вызывает _persist_item.
+    Для аксессуаров — инициализирует пустой список поводов и
+    переводит диалог в шаг awaiting_accessory_occasion.
+    """
+    if draft.get("category") == "аксессуар":
+        draft["accessory_occasions"] = []  # Инициализируем пустой список
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        "Для каких поводов подходит этот аксессуар? "
+                        "Выберите один или несколько, затем нажмите «Готово»:"
+                    ),
+                    additional_kwargs=_kb(ACCESSORY_OCCASIONS_KB),
+                )
+            ],
+            "step": "awaiting_accessory_occasion",
+            "draft_item": draft,
+        }
+    return await _persist_item(state, draft)
 
 
 # ---------- Тексты ----------
@@ -1843,12 +1877,12 @@ async def add_material_node(state: BotState) -> dict:
     # Кнопка из списка
     if lower in VALID_MATERIALS:
         draft["material"] = lower
-        return await _persist_item(state, draft)
+        return await _persist_or_ask_accessory(state, draft)
 
     # Свободный текст — принимаем как материал
     if len(text) >= 2:
         draft["material"] = text
-        return await _persist_item(state, draft)
+        return await _persist_or_ask_accessory(state, draft)
 
     # Слишком коротко — просим ещё раз
     return {
@@ -1874,7 +1908,58 @@ async def add_material_text_node(state: BotState) -> dict:
 
     draft = dict(state.get("draft_item") or {})
     draft["material"] = text
-    return await _persist_item(state, draft)
+    return await _persist_or_ask_accessory(state, draft)
+
+
+async def add_accessory_occasion_node(state: BotState) -> dict:
+    """Обработка выбора поводов для аксессуара.
+
+    Пользователь нажимает кнопки-поводы, они накапливаются в
+    draft["accessory_occasions"]. Когда нажимает «Готово» — вещь
+    сохраняется. Если ничего не выбрано — ставим все 4 повода
+    (универсальный аксессуар).
+    """
+    text = (state.get("input_text") or "").strip().lower()
+    draft = dict(state.get("draft_item") or {})
+    occasions = draft.get("accessory_occasions", [])
+
+    if text in ("готово", "✅ готово"):
+        if not occasions:
+            # Если ничего не выбрали, ставим универсальный
+            draft["accessory_occasions"] = [
+                "прогулка", "работа", "встреча", "спорт"
+            ]
+        return await _persist_item(state, draft)
+
+    valid_occasions = {"работа", "прогулка", "спорт", "встреча"}
+    if text in valid_occasions:
+        if text not in occasions:
+            occasions.append(text)
+            draft["accessory_occasions"] = occasions
+
+        selected_str = ", ".join(occasions)
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        f"Выбрано: <b>{selected_str}</b>.\n"
+                        "Добавьте ещё или нажмите «Готово»:"
+                    ),
+                    additional_kwargs=_kb(ACCESSORY_OCCASIONS_KB),
+                )
+            ],
+            "step": "awaiting_accessory_occasion",
+            "draft_item": draft,
+        }
+
+    return {
+        "messages": [
+            AIMessage(
+                content="Выберите повод из кнопок ниже или нажмите «Готово».",
+                additional_kwargs=_kb(ACCESSORY_OCCASIONS_KB),
+            )
+        ]
+    }
 
 
 # ---------- /outfit ----------
