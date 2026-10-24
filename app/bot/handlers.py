@@ -129,6 +129,56 @@ def _build_inline_markup(spec: list[list[dict]] | None):
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+async def _try_send_vogue_collage(
+    message: Message, ai_msg, vogue_cfg: dict, inline_markup
+) -> bool:
+    """Попробовать собрать и отправить Vogue-коллаж.
+
+    True — отправили (можно выходить из _send_ai_message).
+    False — что-то пошло не так, пусть сработает fallback на media_group.
+    """
+    try:
+        from app.services.vogue_cover import build_collage
+        from app.services.telegram_files import download_photo_by_file_id
+
+        file_ids = vogue_cfg.get("photo_file_ids") or []
+        labels = vogue_cfg.get("labels") or []
+        if not file_ids:
+            return False
+
+        photos_bytes: list[bytes] = []
+        for fid in file_ids:
+            b = await download_photo_by_file_id(fid)
+            if b:
+                photos_bytes.append(b)
+
+        if not photos_bytes or len(photos_bytes) != len(file_ids):
+            logger.warning(
+                "Vogue: скачано %d из %d фото — fallback на media_group",
+                len(photos_bytes), len(file_ids),
+            )
+            return False
+
+        collage_bytes = await asyncio.to_thread(
+            build_collage,
+            photos_bytes,
+            labels,
+            vogue_cfg.get("city", ""),
+            vogue_cfg.get("date_str", ""),
+        )
+
+        await message.answer_photo(
+            photo=BufferedInputFile(collage_bytes, filename="vogue.jpg"),
+            caption=ai_msg.content or "…",
+            parse_mode="HTML",
+            reply_markup=inline_markup,
+        )
+        return True
+    except Exception:
+        logger.exception("Vogue-коллаж: ошибка, fallback на media_group")
+        return False
+
+
 async def _send_ai_message(message: Message, ai_msg) -> None:
     """Отправить одно сообщение ассистента.
 
@@ -154,7 +204,14 @@ async def _send_ai_message(message: Message, ai_msg) -> None:
 
     effective_markup = inline_markup or reply_markup
 
-    # 1. Media group — только новое сообщение, без правки
+    # 1a. Vogue-коллаж (приоритет)
+    vogue_cfg = extra.get("vogue_collage")
+    if vogue_cfg:
+        if await _try_send_vogue_collage(message, ai_msg, vogue_cfg, inline_markup):
+            return
+        # Если не удалось — падаем ниже на media_group
+
+    # 1b. Media group — только новое сообщение, без правки
     if media_group:
         try:
             media = []

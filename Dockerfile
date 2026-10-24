@@ -8,6 +8,10 @@ ENV PYTHONUNBUFFERED=1 \
 
 RUN useradd -m -u 1000 user
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY requirements.txt .

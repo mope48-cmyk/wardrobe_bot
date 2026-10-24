@@ -3,6 +3,7 @@
 import json
 import logging
 from html import escape as esc
+from datetime import datetime
 
 from langchain_core.messages import AIMessage
 
@@ -2486,12 +2487,25 @@ async def outfit_occasion_node(state: BotState) -> dict:
     if row:
         kb.append(row)
 
+    # --- VOGUE-КОЛЛАЖ ---
+    labels = [item.type for item in best_outfit.items]
+    vogue_cfg = {
+        "photo_file_ids": photo_ids,
+        "labels": labels,
+        "city": loc.get("city") or "",
+        "date_str": datetime.now().strftime("%d.%m.%Y"),
+    }
+
     messages = [
-        # 1. Отправляем альбом с фото и основным текстом (без кнопок, т.к. Telegram не поддерживает)
-        AIMessage(content=caption, additional_kwargs={"media_group": photo_ids}),
+        AIMessage(
+            content=caption,
+            additional_kwargs={
+                "vogue_collage": vogue_cfg,
+                "media_group": photo_ids,   # fallback, если коллаж не соберётся
+            },
+        ),
     ]
 
-    # 2. Если есть кнопки, отправляем отдельное сообщение
     if kb:
         messages.append(
             AIMessage(
@@ -2500,7 +2514,6 @@ async def outfit_occasion_node(state: BotState) -> dict:
             )
         )
 
-    # 3. Главное меню
     messages.append(
         AIMessage(
             content="Или выберите другое действие в меню:",
@@ -2599,20 +2612,27 @@ async def outfit_variant_node(state: BotState) -> dict:
     if row:
         kb.append(row)
 
+    labels = [i.type for i in best_outfit_items]
+    vogue_cfg = {
+        "photo_file_ids": [
+            i.generated_photo_file_id or i.photo_file_id
+            for i in best_outfit_items
+        ],
+        "labels": labels,
+        "city": state.get("outfit_city") or "",
+        "date_str": datetime.now().strftime("%d.%m.%Y"),
+    }
+
     messages = [
-        # 1. Отправляем НОВЫЙ альбом (редактировать альбомы в Telegram нельзя, поэтому они будут копиться)
         AIMessage(
             content="\n".join(lines).rstrip(),
             additional_kwargs={
-                "media_group": [
-                    i.generated_photo_file_id or i.photo_file_id
-                    for i in best_outfit_items
-                ],
+                "vogue_collage": vogue_cfg,
+                "media_group": vogue_cfg["photo_file_ids"],  # fallback
             },
         )
     ]
 
-    # 2. Отправляем кнопки отдельным сообщением
     if kb:
         messages.append(
             AIMessage(
