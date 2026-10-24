@@ -164,6 +164,7 @@ async def _try_send_vogue_collage(
             photos_bytes,
             labels,
             vogue_cfg.get("city", ""),
+            vogue_cfg.get("weather_str", ""),
             vogue_cfg.get("date_str", ""),
         )
 
