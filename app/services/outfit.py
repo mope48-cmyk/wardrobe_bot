@@ -99,11 +99,11 @@ def _ideal_season(teff: float) -> str:
 
 def _get_targets(teff: float) -> dict:
     """Общие целевые warmth-диапазоны по эффективной температуре."""
-    if teff >= 26:      top = (1, 2, False, False)
-    elif teff >= 22:    top = (1, 3, False, False)
-    elif teff >= 18:    top = (2, 4, True, False)
-    elif teff >= 14:    top = (3, 5, True, False)
-    elif teff >= 10:    top = (4, 6, True, False)
+    if teff >= 26:      top = (1, 1, False, False) # Только футболка
+    elif teff >= 22:    top = (1, 2, False, False) # Футболка + легкий слой
+    elif teff >= 18:    top = (1, 3, False, False) # Футболка + рубашка
+    elif teff >= 14:    top = (2, 4, True, False)  # + Легкая куртка
+    elif teff >= 10:    top = (3, 5, True, True)   # Полноценная куртка
     elif teff >= 6:     top = (5, 8, True, True)
     elif teff >= 2:     top = (6, 9, True, True)
     elif teff >= -3:    top = (7, 10, True, True)
@@ -133,8 +133,10 @@ def _get_layer_targets(teff: float) -> dict:
     """Отдельная цель warmth для base/mid/outer (п.2)."""
     if teff >= 24:
         return {"base": 1, "mid": 2, "outer": 3}
+    if teff >= 20:
+        return {"base": 1, "mid": 2, "outer": 4}
     if teff >= 18:
-        return {"base": 2, "mid": 2, "outer": 3}
+        return {"base": 2, "mid": 2, "outer": 4}
     if teff >= 14:
         return {"base": 2, "mid": 3, "outer": 4}
     if teff >= 10:
@@ -406,6 +408,14 @@ def _score_combo(
         total -= 0.2
         reasons["missing_outer"] = True
 
+    # НОВОЕ: Штраф за лишние слои (когда на улице тепло)
+    if not target["need_mid"] and has_mid:
+        total -= 0.6
+        reasons["unnecessary_mid"] = True
+    if not target["need_outer"] and has_outer:
+        total -= 0.8
+        reasons["unnecessary_outer"] = True
+
     # п.4: водостойкость — soft
     if need_waterproof:
         outer_or_shoes = [i for i in combo if i.category in ("верх", "обувь")]
@@ -487,7 +497,9 @@ def _score_old(
 
     if has_precip and item.waterproof:
         s += 10
-    if wind > 5.0:
+
+    # ИЗМЕНЕНО: бонус за ветер только если реально прохладно
+    if wind > 5.0 and teff < 15:
         if item.category == "верх":
             layer = getattr(item, "layer", "base")
             if layer == "outer":
@@ -688,14 +700,23 @@ def select_outfit(
         current_bottoms = [None] if is_b_dress else bottom_opts
 
         for m in mid_opts:
+            # НОВОЕ: Очень жарко — никаких средних слоев
+            if teff >= 24 and m: 
+                continue
+                
             for o in outer_opts:
+                # НОВОЕ: Жарко — никаких курток/пальто
+                if teff >= 22 and o:
+                    continue
+                    
                 if o and not b:
                     continue
                 if m and not b:
                     continue
 
                 w_sum = sum(i.warmth_level for i in [b, m, o] if i)
-                if w_sum < target["top_min"] or w_sum > target["top_max"] + 2:
+                # ИЗМЕНЕНО: было top_max + 2, стало top_max + 1
+                if w_sum < target["top_min"] or w_sum > target["top_max"] + 1:
                     continue
 
                 for bot in current_bottoms:
