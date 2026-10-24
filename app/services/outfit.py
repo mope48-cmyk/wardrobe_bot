@@ -571,16 +571,57 @@ def _select_outfit_fallback(
 
     tops = by_cat.get("верх", [])
     chosen_top = None
+    is_dress = False
+
     if tops:
-        strict = [i for i in tops if fits(i)]
-        chosen_top = pick(strict if strict else tops, "верх")
-        if chosen_top:
-            chosen.append(chosen_top)
+        # Разделяем вещи верха по слоям
+        bases = [i for i in tops if getattr(i, "layer", "base") == "base"]
+        mids = [i for i in tops if getattr(i, "layer", "base") == "mid"]
+        outers = [i for i in tops if getattr(i, "layer", "base") == "outer"]
+
+        # Получаем цели по погоде (нужен ли средний/верхний слой)
+        targets = _get_targets(teff)
+
+        chosen_tops = []
+
+        # 1. Всегда пытаемся взять базовый слой, если он есть
+        if bases:
+            strict_bases = [i for i in bases if fits(i)]
+            b = pick(strict_bases if strict_bases else bases, "верх")
+            if b:
+                chosen_tops.append(b)
+
+        # 2. Добавляем средний слой, если прохладно
+        if targets.get("need_mid") and mids:
+            strict_mids = [i for i in mids if fits(i)]
+            m = pick(strict_mids if strict_mids else mids, "верх")
+            if m and m not in chosen_tops:
+                chosen_tops.append(m)
+
+        # 3. Добавляем верхний слой (куртку), если холодно
+        if targets.get("need_outer") and outers:
+            strict_outers = [i for i in outers if fits(i)]
+            o = pick(strict_outers if strict_outers else outers, "верх")
+            if o and o not in chosen_tops:
+                chosen_tops.append(o)
+
+        # 4. Исключение: если базового слоя НЕТ, но есть mid/outer, берем то, что есть
+        if not bases and not chosen_tops and tops:
+            strict_tops = [i for i in tops if fits(i)]
+            fallback_top = pick(strict_tops if strict_tops else tops, "верх")
+            if fallback_top:
+                chosen_tops.append(fallback_top)
+
+        # Если удалось собрать комплект верха
+        if chosen_tops:
+            chosen.extend(chosen_tops)
+            # Определяем платье (если базовый слой - платье)
+            is_dress = any(_is_dress(i) for i in chosen_tops)
+        else:
+            # Совсем ничего не нашли
+            missing.add("верх")
     else:
         missing.add("верх")
-
-    # Если выбранное платье - низ не нужен
-    is_dress = _is_dress(chosen_top)
 
     for cat in ("низ", "обувь"):
         if cat == "низ" and is_dress:
