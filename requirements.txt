@@ -16,3 +16,5 @@ rembg
 onnxruntime
 scipy
 pillow>=10.0.0
+apscheduler>=3.10.0,<4
+pytz

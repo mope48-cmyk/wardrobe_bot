@@ -98,10 +98,12 @@ def route_condition(state: BotState) -> str:
     if text == "list:toggle_photo": return "list_toggle_photo"
     if text == "list:delete_product_photo": return "list_delete_product_photo"
     if text == "list:make_product_photo": return "list_make_product_photo"
+    if text == "list:ai_analyze": return "list_ai_analyze"
     if text == "list:menu": return "list_menu"
     if text.startswith("list:cat:"): return "list_category"
     if text == "outfit:warmer": return "outfit_variant"
     if text == "outfit:lighter": return "outfit_variant"
+    if text in ("add:ai:save", "add:ai:edit"): return "add_confirm_ai"
 
     # 1. Slash-команды
     if text.startswith("/"):
@@ -137,6 +139,7 @@ def route_condition(state: BotState) -> str:
         "awaiting_location",
         "awaiting_occasion",
         "awaiting_verdict_photo",
+        "awaiting_ai_confirm",
         "awaiting_confirm_category",
         "awaiting_accessory_occasion",
         "list_edit_input",
@@ -169,6 +172,7 @@ def route_condition(state: BotState) -> str:
     if step == "awaiting_verdict_photo":
         if state.get("input_photo_file_id"): return "verdict_photo"
         return "verdict_expect_photo"
+    if step == "awaiting_ai_confirm": return "add_confirm_ai"
     if step and step.startswith("awaiting_"): return "add_attribute"
 
     return "fallback"
@@ -208,6 +212,7 @@ def build_graph():
         "list_delete_product_photo", nodes.list_delete_product_photo_node
     )
     builder.add_node("list_make_product_photo", nodes.list_make_product_photo_node)
+    builder.add_node("list_ai_analyze", nodes.list_ai_analyze_node)
 
     # /outfit
     builder.add_node("outfit_start", nodes.outfit_start_node)
@@ -227,6 +232,7 @@ def build_graph():
     builder.add_node("add_start", nodes.add_start_node)
     builder.add_node("add_expect_photo", nodes.add_expect_photo_node)
     builder.add_node("add_photo", nodes.add_photo_node)
+    builder.add_node("add_confirm_ai", nodes.add_confirm_ai_node)
     builder.add_node("add_confirm_category", nodes.add_confirm_category_node)
     builder.add_node("add_color", nodes.add_color_node)
     builder.add_node("add_color_text", nodes.add_color_text_node)
@@ -259,6 +265,7 @@ def build_graph():
             "list_toggle_photo": "list_toggle_photo",
             "list_delete_product_photo": "list_delete_product_photo",
             "list_make_product_photo": "list_make_product_photo",
+            "list_ai_analyze": "list_ai_analyze",
             "outfit_start": "outfit_start",
             "outfit_location": "outfit_location",
             "outfit_occasion": "outfit_occasion",
@@ -270,6 +277,7 @@ def build_graph():
             "add_start": "add_start",
             "add_expect_photo": "add_expect_photo",
             "add_photo": "add_photo",
+            "add_confirm_ai": "add_confirm_ai",
             "add_confirm_category": "add_confirm_category",
             "add_color": "add_color",
             "add_color_text": "add_color_text",
@@ -287,12 +295,14 @@ def build_graph():
         "list_prev", "list_next", "list_noop", "list_edit", "list_delete",
         "list_delete_do", "list_delete_cancel",
         "list_toggle_photo", "list_make_product_photo",
+        "list_ai_analyze",
         "list_delete_product_photo",
         "list_edit_field", "list_edit_choice", "list_edit_save", "list_edit_cancel",
         "outfit_start", "outfit_location", "outfit_occasion", "outfit_variant",
         "dna_start",
         "verdict_start", "verdict_expect_photo", "verdict_photo",
         "add_start", "add_expect_photo", "add_photo",
+        "add_confirm_ai",
         "add_confirm_category", "add_attribute",
         "add_color", "add_color_text", "add_layer",
         "add_material", "add_material_text", "add_accessory_occasion",

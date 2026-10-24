@@ -24,6 +24,7 @@ from app.services.product_photo_bg import (
     set_current_card,
 )
 from app.services.vision import classify_clothing
+from app.services.vision_gigachat import analyze_clothing_with_gigachat
 from app.services.weather import geocode_city, get_weather
 
 logger = logging.getLogger(__name__)
@@ -642,14 +643,16 @@ def _list_keyboard(
     return [
         [
             {"text": "✏️ Редактировать", "callback_data": "list:edit"},
-            {"text": "🗑 Удалить вещь", "callback_data": "list:delete"},
+            {"text": "🧠 ИИ-Анализ", "callback_data": "list:ai_analyze"}, # <-- НОВАЯ КНОПКА
         ],
         row2,
+        [
+            {"text": "🗑 Удалить вещь", "callback_data": "list:delete"}, # Перенесли вниз
+        ],
         [
             {"text": "⬅️ Назад", "callback_data": prev_cb},
             {"text": "Вперёд ➡️", "callback_data": next_cb},
         ],
-        # НОВАЯ КНОПКА: возврат в меню разделов
         [{"text": "📁 К разделам", "callback_data": "list:menu"}],
     ]
 
@@ -1581,6 +1584,70 @@ async def list_make_product_photo_node(state: BotState) -> dict:
     return result
 
 
+async def list_ai_analyze_node(state: BotState) -> dict:
+    """Обновить характеристики уже сохраненной вещи через GigaChat."""
+    from app.services.telegram_files import download_photo_by_file_id
+    from app.services.vision_gigachat import analyze_clothing_with_gigachat
+
+    ids = state.get("list_ids") or []
+    index = state.get("list_index") or 0
+    user_id = state["user_id"]
+
+    if not ids or index >= len(ids):
+        return {"messages": [AIMessage(content="Нечего анализировать.")]}
+
+    item_id = ids[index]
+    item = await get_item(item_id)
+    if not item:
+        return {"messages": [AIMessage(content="Вещь не найдена.")]}
+
+    # 1. Скачиваем оригинал фото
+    image_bytes = await download_photo_by_file_id(item.photo_file_id)
+    if not image_bytes:
+        return {
+            "messages": [
+                AIMessage(
+                    content="❌ Не удалось скачать фото для анализа.",
+                    additional_kwargs=_kb(MENU_KEYBOARD),
+                )
+            ],
+            "step": None, "intent": None,
+        }
+
+    # 2. Отправляем в GigaChat
+    ai_data = await analyze_clothing_with_gigachat(image_bytes)
+    if not ai_data:
+        # Возвращаемся к карточке, чтобы не ломать UX
+        res = await _render_current(state, edit_mode="caption")
+        if res.get("messages"):
+            extra = dict(res["messages"][0].additional_kwargs or {})
+            # Можно было бы показать alert, но мы просто тихо вернем карточку.
+            # Handlers сам разберется с текстом.
+        return res
+
+    # 3. Обновляем поля в БД
+    updates = {
+        "category": ai_data.get("category"),
+        "type": ai_data.get("type"),
+        "colors": json.dumps(ai_data.get("colors", []), ensure_ascii=False),
+        "material": ai_data.get("material"),
+        "warmth_level": ai_data.get("warmth_level"),
+        "waterproof": ai_data.get("waterproof"),
+        "formal_level": ai_data.get("formal_level"),
+        "season": ai_data.get("season"),
+        "layer": ai_data.get("layer"),
+    }
+
+    for field, value in updates.items():
+        if value is not None:
+            await update_item_field(item_id, user_id, field, value)
+
+    logger.info("ИИ обновил вещь id=%s", item_id)
+
+    # 4. Перерисовываем карточку с новыми данными
+    return await _render_current(state, edit_mode="caption")
+
+
 # ---------- /add ----------
 
 VALID_CATEGORIES = {"верх", "низ", "обувь", "аксессуар"}
@@ -1729,10 +1796,47 @@ async def add_expect_photo_node(state: BotState) -> dict:
 async def add_photo_node(state: BotState) -> dict:
     file_id = state.get("input_photo_file_id")
     image_bytes = state.get("input_photo_bytes")
-
     draft = dict(state.get("draft_item") or {})
     draft["photo_file_id"] = file_id
 
+    # 1. Пробуем GigaChat (если есть фото)
+    if image_bytes:
+        ai_data = await analyze_clothing_with_gigachat(image_bytes)
+        if ai_data:
+            # Успех! Заполняем черновик
+            draft.update(ai_data)
+
+            # Красивый текст для подтверждения
+            colors_str = ", ".join(draft.get("colors", []))
+            text = (
+                "Браво! Я изучил вещь:\n\n"
+                f"• <b>{draft.get('category')} / {draft.get('type')}</b>\n"
+                f"• цвета: {colors_str}\n"
+                f"• материал: {draft.get('material') or '—'}\n"
+                f"• тепло: {draft.get('warmth_level')}/5\n"
+                f"• стиль: {draft.get('formal_level')}\n"
+                f"• сезон: {draft.get('season')}\n\n"
+                "Всё верно?"
+            )
+            return {
+                "messages": [
+                    AIMessage(
+                        content=text,
+                        additional_kwargs={
+                            "inline_keyboard": [
+                                [
+                                    {"text": "✅ Всё верно", "callback_data": "add:ai:save"},
+                                    {"text": "✏️ Изменить", "callback_data": "add:ai:edit"},
+                                ]
+                            ]
+                        },
+                    )
+                ],
+                "step": "awaiting_ai_confirm",
+                "draft_item": draft,
+            }
+
+    # 2. Fallback (старый SigLIP или ручной ввод)
     if not image_bytes:
         return {
             "messages": [
@@ -1749,15 +1853,11 @@ async def add_photo_node(state: BotState) -> dict:
         }
 
     result = await classify_clothing(image_bytes)
-
     if not result.get("ok") or not result.get("options"):
         return {
             "messages": [
                 AIMessage(
-                    content=(
-                        "Боже мой, я не могу это распознать! Это точно одежда?\n\n"
-                        "Подскажите мне категорию:"
-                    ),
+                    content="Не удалось распознать. Подскажите категорию:",
                     additional_kwargs=_kb_for_step("awaiting_category"),
                 )
             ],
@@ -1812,6 +1912,41 @@ async def add_photo_node(state: BotState) -> dict:
         ],
         "step": "awaiting_confirm_category",
         "draft_item": draft,
+    }
+
+
+async def add_confirm_ai_node(state: BotState) -> dict:
+    """Обработка кнопок под карточкой от GigaChat."""
+    text = (state.get("input_text") or "").strip()
+    draft = state.get("draft_item") or {}
+
+    if text == "add:ai:save":
+        # Сохраняем и радуемся
+        return await _persist_or_ask_accessory(state, draft)
+
+    elif text == "add:ai:edit":
+        # Сохраняем, чтобы получить ID, и сразу открываем редактор
+        res = await _persist_item(state, draft)
+        # Если _persist_item вернула ошибку (нет сообщений) — выходим
+        if not res.get("messages"):
+            return res
+
+        # Нам нужен ID только что созданной вещи.
+        # Проще всего попросить пользователя зайти в /list,
+        # но мы можем сделать хак: перезапрашиваем последнюю вещь.
+        # В текущей архитектуре проще отправить в /list.
+        return {
+            "messages": [
+                AIMessage(
+                    content="Вещь сохранена! Вы можете отредактировать её в разделе /list.",
+                    additional_kwargs=_kb(MENU_KEYBOARD),
+                )
+            ],
+            "step": None, "intent": None, "draft_item": None,
+        }
+
+    return {
+        "messages": [AIMessage(content="Выберите вариант на клавиатуре ниже.")]
     }
 
 

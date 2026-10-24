@@ -436,8 +436,11 @@ async def handle_callback(callback: CallbackQuery) -> None:
         await callback.answer("Это последняя вещь", show_alert=False)
         return
 
-    # Убираем "часики" на кнопке
-    await callback.answer()
+    # Убираем "часики" на кнопке и показываем статус для ИИ-анализа
+    if data == "list:ai_analyze":
+        await callback.answer("🧠 Нейросеть анализирует фото. Подождите...", show_alert=False)
+    else:
+        await callback.answer()
 
     # Запоминаем id сообщения, чтобы отредактировать его, а не плодить новые
     edit_message_id = callback.message.message_id
