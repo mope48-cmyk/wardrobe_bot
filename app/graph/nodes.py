@@ -506,7 +506,7 @@ async def verdict_photo_node(state: BotState) -> dict:
     for i, chunk in enumerate(chunks):
         if i == 0:
             content = (
-                "⚖️ <b>Приговор от Васильева</b>\n\n"
+                "⚖️ <b>Приговор от ИИ стилиста</b>\n\n"
                 f"💬 <i>{esc(chunk)}</i>"
             )
         else:
