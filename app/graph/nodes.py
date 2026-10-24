@@ -2336,6 +2336,25 @@ async def outfit_location_node(state: BotState) -> dict:
     }
 
 
+def _format_weather_for_collage(weather: dict) -> str:
+    """Короткая строка погоды для обложки."""
+    if not weather:
+        return ""
+
+    desc = weather.get("description", "").capitalize()
+    temp = weather.get("temp", 0)
+    feels_like = weather.get("feels_like", temp)
+    wind = weather.get("wind_speed", 0)
+
+    parts = [f"{desc}, {temp:.0f}°C"]
+    if abs(feels_like - temp) >= 2:
+        parts.append(f"ощущается как {feels_like:.0f}°C")
+    if wind > 3:
+        parts.append(f"ветер {wind:.0f} м/с")
+
+    return " • ".join(parts)
+
+
 async def outfit_occasion_node(state: BotState) -> dict:
     """Обработка повода: получаем варианты, показываем сбалансированный."""
     text = (state.get("input_text") or "").strip().lower()
@@ -2421,7 +2440,18 @@ async def outfit_occasion_node(state: BotState) -> dict:
     best_idx = min(1, len(outfits) - 1) if len(outfits) > 1 else 0
     best_outfit = outfits[best_idx]
 
-    city_name = loc.get("city") or "вашем городе"
+    # Для комментария оставляем "вашем городе", если нет нормального названия
+    city_for_prompt = loc.get("city") or "вашем городе"
+
+    # Для обложки: если нет города, выводим координаты
+    city_display = loc.get("city")
+    if not city_display:
+        lat = loc.get("lat")
+        lon = loc.get("lon")
+        if lat is not None and lon is not None:
+            city_display = f"{lat:.4f}, {lon:.4f}"
+        else:
+            city_display = ""
 
     # Формируем заголовок
     city_str = f" ({loc['city']})" if loc.get("city") else ""
@@ -2437,7 +2467,7 @@ async def outfit_occasion_node(state: BotState) -> dict:
 
     # Генерируем комментарий Васильева с учётом флагов плохого стиля
     comment = await generate_vasiliev_comment(
-        weather, city_name, text, best_outfit.items,
+        weather, city_for_prompt, text, best_outfit.items,
         relaxed_categories=best_outfit.relaxed_categories,
         max_chars=350,
     )
@@ -2492,7 +2522,8 @@ async def outfit_occasion_node(state: BotState) -> dict:
     vogue_cfg = {
         "photo_file_ids": photo_ids,
         "labels": labels,
-        "city": loc.get("city") or "",
+        "city": city_display,
+        "weather_str": _format_weather_for_collage(weather),
         "date_str": datetime.now().strftime("%d.%m.%Y"),
     }
 
@@ -2526,7 +2557,7 @@ async def outfit_occasion_node(state: BotState) -> dict:
         "step": None, "intent": None, "location": None,
         "outfit_options": outfit_ids,
         "outfit_index": best_idx,
-        "outfit_city": city_name,
+        "outfit_city": city_display,
         "outfit_relaxed": outfit_relaxed,
         "occasion": text,
         "weather": weather,
@@ -2620,6 +2651,7 @@ async def outfit_variant_node(state: BotState) -> dict:
         ],
         "labels": labels,
         "city": state.get("outfit_city") or "",
+        "weather_str": _format_weather_for_collage(weather),
         "date_str": datetime.now().strftime("%d.%m.%Y"),
     }
 

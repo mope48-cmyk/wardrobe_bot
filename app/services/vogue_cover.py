@@ -74,6 +74,7 @@ def build_collage(
     photos: list[bytes],
     labels: list[str],
     city: str,
+    weather_str: str,
     date_str: str,
     brand: str = BRAND_DEFAULT,
 ) -> bytes:
@@ -82,6 +83,7 @@ def build_collage(
     photos — байты фото вещей (по порядку)
     labels — подписи (тип вещи)
     city — название города ("" → в шапке только дата)
+    weather_str — строка с погодой (например, "ясно, 22°C")
     date_str — дата, например "25.10.2026"
     """
     if not photos:
@@ -92,6 +94,7 @@ def build_collage(
 
     font_brand = _try_load_font(FONT_BRAND_PATH, 72)
     font_sub = _try_load_font(FONT_SUB_PATH, 32)
+    font_weather = _try_load_font(FONT_SUB_PATH, 28) # Чуть меньше для погоды
     font_label = _try_load_font(FONT_LABEL_PATH, 28)
 
     # --- Шапка ---
@@ -113,8 +116,20 @@ def build_collage(
         sub, fill=TEXT_GREY, font=font_sub,
     )
 
+    # --- Погода ---
+    weather_y = sub_y + sub_h + 10
+    w_h = 0
+    if weather_str:
+        w_bbox = draw.textbbox((0, 0), weather_str, font=font_weather)
+        w_w = w_bbox[2] - w_bbox[0]
+        w_h = w_bbox[3] - w_bbox[1]
+        draw.text(
+            ((COLLAGE_W - w_w) // 2, weather_y - w_bbox[1]),
+            weather_str, fill=TEXT_GREY, font=font_weather,
+        )
+
     # --- Сетка ---
-    grid_top = sub_y + sub_h + 40
+    grid_top = weather_y + w_h + 40
     grid_bottom = COLLAGE_H - MARGIN
     grid_left = MARGIN
     grid_right = COLLAGE_W - MARGIN
