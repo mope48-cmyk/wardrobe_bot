@@ -11,11 +11,12 @@ CARD_W = 1080
 CARD_H = 1350
 MARGIN = 80
 
-# Шрифты (В Dockerfile мы устанавливали fonts-dejavu-core)
+# Шрифты (В Dockerfile установлен fonts-dejavu-core)
 FONT_SERIF_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"
 FONT_SANS_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FONT_SANS_REG = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-FONT_SANS_ITALIC = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf"
+# Заменили курсив на обычный шрифт, так как в fonts-dejavu-core нет Oblique
+FONT_SANS_ITALIC = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
 # Эстетичная палитра (Vogue-style)
 BG_COLOR = (248, 246, 240)      # Теплый бумажный белый
@@ -39,11 +40,17 @@ COLOR_MAP = {
 }
 
 def _load_font(path, size):
+    """Безопасная загрузка шрифта с фолбэком на кириллический DejaVuSans."""
     try:
         return ImageFont.truetype(path, size)
     except Exception:
-        logger.warning(f"Шрифт {path} не найден, fallback.")
-        return ImageFont.load_default()
+        logger.warning(f"Шрифт {path} не найден, fallback на DejaVuSans.")
+        try:
+            # Пытаемся загрузить базовый шрифт, который точно поддерживает кириллицу
+            return ImageFont.truetype(FONT_SANS_REG, size)
+        except Exception:
+            # Если уж совсем ничего нет, используем дефолт (но это маловероятно)
+            return ImageFont.load_default()
 
 def _get_rgb(color_name: str) -> tuple:
     """Преобразовать название цвета в RGB."""
@@ -102,7 +109,7 @@ def build_dna_card(
     f_title = _load_font(FONT_SANS_BOLD, 80)
     f_large = _load_font(FONT_SERIF_BOLD, 110)
     f_text = _load_font(FONT_SANS_REG, 32)
-    f_italic = _load_font(FONT_SANS_ITALIC, 28)
+    f_italic = _load_font(FONT_SANS_ITALIC, 28) # Теперь это обычный шрифт
     f_cta_bold = _load_font(FONT_SANS_BOLD, 36)
 
     # ================= ШАПКА =================
@@ -167,12 +174,12 @@ def build_dna_card(
     y += 50
 
     if gaps:
-        for gap_text in gaps[:3]: # Берем топ-3 пробела
+        for gap_text in gaps[:3]:
             bullet_text = f"— {gap_text.capitalize()}"
-            y = _draw_text_wrapped(draw, bullet_text, f_italic, TEXT_BLACK, CARD_W - MARGIN*2, y)
+            y = _draw_text_wrapped(draw, bullet_text, f_text, TEXT_BLACK, CARD_W - MARGIN*2, y)
             y += 10
     else:
-        draw.text((MARGIN, y), "— Идеальный гардероб, докупать нечего!", fill=TEXT_BLACK, font=f_italic)
+        draw.text((MARGIN, y), "— Идеальный гардероб, докупать нечего!", fill=TEXT_BLACK, font=f_text)
 
     # ================= ФУТЕР (CTA) =================
     # Прижимаем к низу
