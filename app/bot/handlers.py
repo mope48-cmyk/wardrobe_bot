@@ -196,6 +196,33 @@ async def _send_ai_message(message: Message, ai_msg) -> None:
     """
     extra = getattr(ai_msg, "additional_kwargs", None) or {}
 
+    # --- 0. ГЕНЕРАЦИЯ ДНК-КАРТОЧКИ (перехват до Vogue-коллажа) ---
+    dna_data = extra.get("dna_card_data")
+    if dna_data:
+        try:
+            from app.services.dna_card import build_dna_card
+
+            # Генерируем в отдельном потоке, чтобы не блокировать бота
+            card_bytes = await asyncio.to_thread(
+                build_dna_card,
+                total_items=dna_data["total_items"],
+                dominant_style=dna_data["dominant_style"],
+                top_colors=dna_data["top_colors"],
+                warmth_label=dna_data["warmth_label"],
+                gaps=dna_data["gaps"],
+            )
+
+            await message.answer_photo(
+                photo=BufferedInputFile(card_bytes, filename="my_dna.jpg"),
+                caption=ai_msg.content,
+                parse_mode="HTML",
+                reply_markup=_build_inline_markup(extra.get("inline_keyboard")),
+            )
+            return  # Выходим, картинка отправлена
+        except Exception:
+            logger.exception("Ошибка генерации ДНК-карточки")
+            # При ошибке просто отправим текст ниже (карточка не критична)
+
     photo_file_id = extra.get("photo_file_id")
     edit_message_id = extra.get("edit_message_id")
     edit_mode = extra.get("edit_mode", "media")

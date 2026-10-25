@@ -348,42 +348,35 @@ async def dna_start_node(state: BotState) -> dict:
 
     profile = analyze_wardrobe(list(items))
     brief = profile_to_llm_brief(profile)
-    comment = await generate_dna_comment(brief, max_chars=500)
+    comment = await generate_dna_comment(brief, max_chars=400)
 
     if not comment:
-        comment = (
-            "Боже мой, вдохновение покинуло меня! Но по цифрам вижу: "
-            "стиль у вас есть, и его надо развивать."
-        )
+        comment = "Браво! Ваш стиль уникален и требует лишь небольших штрихов."
 
-    # Короткая сводка цифр — чтобы пользователь видел «факты», а не только текст
-    style_top = profile.dominant_style
-    top_colors_str = (
-        ", ".join(c for c, _ in profile.top_colors) or "—"
-    )
-    gaps_str = "; ".join(profile.gaps) if profile.gaps else "пробелов нет"
-
-    summary = (
-        "🧬 <b>Ваш стилевой ДНК</b>\n\n"
+    # Текст, который будет подписью к картинке
+    text = (
+        "🧬 <b>Ваш стилевой ДНК готов!</b>\n\n"
         f"💬 <i>{esc(comment)}</i>\n\n"
-        "📊 <b>Факты из гардероба:</b>\n"
-        f"• вещей: <b>{profile.total_items}</b>\n"
-        f"• доминирующий стиль: <b>{style_top}</b>\n"
-        f"• топ-цвета: {esc(top_colors_str)}\n"
-        f"• средний уровень тепла: {profile.avg_warmth:.1f}/5\n"
-        f"• профиль тепла: {esc(profile.warmth_label)}\n"
-        f"• пробелы: {esc(gaps_str)}"
+        "📸 Я подготовил для вас красивую карточку. Делитесь ею с друзьями!"
     )
+
+    # Данные для Pillow
+    card_data = {
+        "total_items": profile.total_items,
+        "dominant_style": profile.dominant_style,
+        "top_colors": profile.top_colors,
+        "warmth_label": profile.warmth_label,
+        "gaps": profile.gaps,
+    }
 
     return {
         "messages": [
             AIMessage(
-                content=summary,
+                content=text,
                 additional_kwargs={
+                    "dna_card_data": card_data,
                     "inline_keyboard": [
-                        [
-                            {"text": "👕 К гардеробу", "callback_data": "list:menu"},
-                        ]
+                        [{"text": "👕 К гардеробу", "callback_data": "list:menu"}]
                     ],
                 },
             )
