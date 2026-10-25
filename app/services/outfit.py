@@ -335,10 +335,14 @@ def _score_item(
     if priority < STYLE_HARD_CUT:
         return -1000.0
 
-    # ЖЕСТКИЙ ЗАПРЕТ: летние вещи при температуре ниже 12 градусов
+    # ЖЕСТКИЙ ЗАПРЕТ: летние вещи при прохладной погоде или дожде
     item_type = item.type.lower()
-    if teff < 12 and any(k in item_type for k in ["шорт", "сандал", "майк", "топ", "панам"]):
-        return -1000.0
+    is_summer_item = any(k in item_type for k in ["шорт", "сандал", "майк", "топ", "панам"])
+    if is_summer_item:
+        if teff < 15 or need_waterproof:
+            return -1000.0
+        if occasion == "спорт" and teff < 18:
+            return -1000.0 # В прохладу на спорт лучше штаны
 
     if slot == "top":
         layer = getattr(item, "layer", "base")
@@ -488,10 +492,14 @@ def _score_old(
     if priority < STYLE_HARD_CUT:
         return -1000.0
 
-    # ЖЕСТКИЙ ЗАПРЕТ: летние вещи при температуре ниже 12 градусов
+    # ЖЕСТКИЙ ЗАПРЕТ: летние вещи при прохладной погоде или дожде
     item_type = item.type.lower()
-    if teff < 12 and any(k in item_type for k in ["шорт", "сандал", "майк", "топ", "панам"]):
-        return -1000.0
+    is_summer_item = any(k in item_type for k in ["шорт", "сандал", "майк", "топ", "панам"])
+    if is_summer_item:
+        if teff < 15 or weather.get("has_precipitation", False):
+            return -1000.0
+        if occasion == "спорт" and teff < 18:
+            return -1000.0
 
     s = priority * 50
 

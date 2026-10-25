@@ -99,6 +99,7 @@ def route_condition(state: BotState) -> str:
     if text == "list:delete_product_photo": return "list_delete_product_photo"
     if text == "list:make_product_photo": return "list_make_product_photo"
     if text == "list:ai_analyze": return "list_ai_analyze"
+    if text == "list:more_toggle": return "list_more_toggle"
     if text == "list:menu": return "list_menu"
     if text.startswith("list:cat:"): return "list_category"
     if text == "outfit:warmer": return "outfit_variant"
@@ -213,6 +214,7 @@ def build_graph():
     )
     builder.add_node("list_make_product_photo", nodes.list_make_product_photo_node)
     builder.add_node("list_ai_analyze", nodes.list_ai_analyze_node)
+    builder.add_node("list_more_toggle", nodes.list_more_toggle_node)
 
     # /outfit
     builder.add_node("outfit_start", nodes.outfit_start_node)
@@ -266,6 +268,7 @@ def build_graph():
             "list_delete_product_photo": "list_delete_product_photo",
             "list_make_product_photo": "list_make_product_photo",
             "list_ai_analyze": "list_ai_analyze",
+            "list_more_toggle": "list_more_toggle",
             "outfit_start": "outfit_start",
             "outfit_location": "outfit_location",
             "outfit_occasion": "outfit_occasion",
@@ -296,6 +299,7 @@ def build_graph():
         "list_delete_do", "list_delete_cancel",
         "list_toggle_photo", "list_make_product_photo",
         "list_ai_analyze",
+        "list_more_toggle",
         "list_delete_product_photo",
         "list_edit_field", "list_edit_choice", "list_edit_save", "list_edit_cancel",
         "outfit_start", "outfit_location", "outfit_occasion", "outfit_variant",

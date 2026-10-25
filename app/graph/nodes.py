@@ -612,48 +612,56 @@ def _list_keyboard(
     has_generated: bool,
     show_original: bool,
     is_gen_now: bool,
+    show_more_menu: bool,
 ) -> list[list[dict]]:
-    """Inline-клавиатура карточки вещи."""
+    """Inline-клавиатура карточки вещи (динамическая)."""
     prev_cb = "list:prev" if index > 0 else "list:noop:first"
     next_cb = "list:next" if index < total - 1 else "list:noop:last"
 
-    if is_gen_now:
-        row2 = [
-            {"text": "⏳ Готовится…", "callback_data": "list:noop_generating"},
+    # --- БАЗОВОЕ МЕНЮ (2 ряда) ---
+    if not show_more_menu:
+        return [
+            [
+                {"text": "⬅️ Назад", "callback_data": prev_cb},
+                {"text": "Вперёд ➡️", "callback_data": next_cb},
+            ],
+            [
+                {"text": "📁 К разделам", "callback_data": "list:menu"},
+                {"text": "⚙️ Дополнительно", "callback_data": "list:more_toggle"},
+            ],
         ]
+
+    # --- РАСШИРЕННОЕ МЕНЮ (показывается по кнопке) ---
+    if is_gen_now:
+        row2 = [{"text": "⏳ Готовится…", "callback_data": "list:noop_generating"}]
     elif has_generated:
-        toggle_text = (
-            "📷 Оригинал" if not show_original else "📸 Фото каталога"
-        )
+        toggle_text = "📷 Оригинал" if not show_original else "📸 Каталог"
         row2 = [
             {"text": toggle_text, "callback_data": "list:toggle_photo"},
-            {
-                "text": "🗑 Удалить фото каталога",
-                "callback_data": "list:delete_product_photo",
-            },
+            {"text": "🗑 Удалить фото", "callback_data": "list:delete_product_photo"},
         ]
     else:
         row2 = [
-            {
-                "text": "📸 Сделать фото для каталога",
-                "callback_data": "list:make_product_photo",
-            },
+            {"text": "📸 Сделать фото", "callback_data": "list:make_product_photo"},
         ]
 
     return [
         [
             {"text": "✏️ Редактировать", "callback_data": "list:edit"},
-            {"text": "🧠 ИИ-Анализ", "callback_data": "list:ai_analyze"}, # <-- НОВАЯ КНОПКА
+            {"text": "🧠 ИИ-Анализ", "callback_data": "list:ai_analyze"},
         ],
         row2,
         [
-            {"text": "🗑 Удалить вещь", "callback_data": "list:delete"}, # Перенесли вниз
+            {"text": "🗑 Удалить вещь", "callback_data": "list:delete"},
         ],
         [
             {"text": "⬅️ Назад", "callback_data": prev_cb},
             {"text": "Вперёд ➡️", "callback_data": next_cb},
         ],
-        [{"text": "📁 К разделам", "callback_data": "list:menu"}],
+        [
+            {"text": "📁 К разделам", "callback_data": "list:menu"},
+            {"text": "⬆️ Скрыть", "callback_data": "list:more_toggle"},
+        ],
     ]
 
 
@@ -732,13 +740,15 @@ async def _render_current(state: BotState, edit_mode: str = "media") -> dict:
         photo_to_show = item.photo_file_id
         mode_mark = ""
 
+    show_more_menu = bool(state.get("show_more_menu") or False)
+
     header = f"📋 Вещь <b>{index + 1}</b> из <b>{total}</b>\n\n"
     caption = header + _item_caption(item) + mode_mark
 
     additional: dict = {
         "photo_file_id": photo_to_show,
         "inline_keyboard": _list_keyboard(
-            index, total, has_generated, show_original, is_gen
+            index, total, has_generated, show_original, is_gen, show_more_menu
         ),
         "edit_mode": edit_mode,
     }
@@ -754,6 +764,7 @@ async def _render_current(state: BotState, edit_mode: str = "media") -> dict:
         "list_source": state.get("list_source") or "list",
         "edit_message_id": edit_message_id,
         "show_original": show_original,
+        "show_more_menu": show_more_menu,  # <-- сохраняем состояние
     }
 
 
@@ -821,6 +832,7 @@ async def list_category_node(state: BotState) -> dict:
         "list_filter": category,
         "edit_message_id": None,  # Отправляем новое сообщение с фото
         "show_original": False,
+        "show_more_menu": False,  # <-- ДОБАВИТЬ
     })
 
 
@@ -831,6 +843,7 @@ async def list_prev_node(state: BotState) -> dict:
         **state,
         "list_index": max(0, index - 1),
         "show_original": False,
+        "show_more_menu": False,  # <-- ДОБАВИТЬ
     })
 
 
@@ -842,6 +855,7 @@ async def list_next_node(state: BotState) -> dict:
         **state,
         "list_index": min(len(ids) - 1, index + 1),
         "show_original": False,
+        "show_more_menu": False,  # <-- ДОБАВИТЬ
     })
 
 
@@ -852,6 +866,15 @@ async def list_noop_node(state: BotState) -> dict:
     возвращаем пустой ответ, чтобы граф не падал.
     """
     return {}
+
+
+async def list_more_toggle_node(state: BotState) -> dict:
+    """Переключить расширенное/базовое меню карточки."""
+    current = bool(state.get("show_more_menu") or False)
+    return await _render_current(
+        {**state, "show_more_menu": not current},
+        edit_mode="caption",
+    )
 
 
 # ---------- Редактирование вещи ----------

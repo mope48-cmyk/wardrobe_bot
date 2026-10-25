@@ -34,6 +34,7 @@ class BotState(TypedDict, total=False):
     edit_message_id: int | None
     show_original: bool
     list_filter: str | None  # Текущий фильтр категории ("верх", "низ", "all" и т.д.)
+    show_more_menu: bool  # <-- ДОБАВИТЬ ЭТУ СТРОКУ
 
     # Для /outfit: варианты подбора и текущий индекс
     outfit_options: list[list[int]] | None  # Список вариантов, каждый — список ID вещей
