@@ -758,14 +758,18 @@ def _list_keyboard(
         ]
 
     laundry_text = "✅ Вернуть в гардероб" if is_in_laundry else "🧺 Отправить в стирку"
-    row_laundry = [{"text": laundry_text, "callback_data": "list:toggle_laundry"}]
+    overlay_btn = {"text": "🎨 Сменить фон", "callback_data": "list:toggle_overlay"}
+    row_extra = [
+        overlay_btn,
+        {"text": laundry_text, "callback_data": "list:toggle_laundry"},
+    ]
 
     return [
         [
             {"text": "✏️ Редактировать", "callback_data": "list:edit"},
             {"text": "🧠 ИИ-Анализ", "callback_data": "list:ai_analyze"},
         ],
-        row_laundry,
+        row_extra,
         row2,
         [
             {"text": "🗑 Удалить вещь", "callback_data": "list:delete"},
@@ -3205,6 +3209,49 @@ async def list_toggle_laundry_node(state: BotState) -> dict:
     return await _render_current(state, edit_mode="caption")
 
 
+async def list_toggle_overlay_node(state: BotState) -> dict:
+    ids = state.get("list_ids") or []
+    index = state.get("list_index") or 0
+    user_id = state["user_id"]
+
+    if not ids or index >= len(ids):
+        return {"messages": [AIMessage(content="Нечего обрабатывать.")]}
+
+    item = await get_item(ids[index])
+    if not item:
+        return {"messages": [AIMessage(content="Вещь не найдена.")]}
+
+    new_status = not getattr(item, "use_white_overlay", False)
+    await update_item_field(item.id, user_id, "use_white_overlay", new_status)
+
+    # Удаляем старый сгенерированный файл, чтобы запустить генерацию заново
+    await update_item_field(item.id, user_id, "generated_photo_file_id", None)
+
+    # Если уже генерируется — просто перерисовываем карточку
+    if is_generating(item.id):
+        return await _render_current(state, edit_mode="caption")
+
+    mark_generating(item.id)
+
+    result = await _render_current(state, edit_mode="caption")
+
+    # Добавляем маркер для handlers (чтобы запустил фоновую задачу)
+    if result["messages"]:
+        extra = dict(result["messages"][0].additional_kwargs or {})
+        extra["start_product_photo"] = {
+            "item_id": item.id,
+            "user_id": user_id,
+            "photo_file_id": item.photo_file_id,
+            "category": item.category,
+            "item_type": item.type,
+            "card_index": index,
+            "card_total": len(ids),
+        }
+        result["messages"][0].additional_kwargs = extra
+
+    return result
+
+
 async def laundry_text_node(state: BotState) -> dict:
     from datetime import datetime
 
@@ -3372,6 +3419,8 @@ async def laundry_callback_node(state: BotState) -> dict:
 
 
 async def capsule_node(state: BotState) -> dict:
+    from datetime import datetime
+
     from app.db.repository import get_disliked_items
     from app.services.capsule import generate_capsule
 
@@ -3394,12 +3443,8 @@ async def capsule_node(state: BotState) -> dict:
             "step": None,
         }
 
-    lines = [
-        "🎒 <b>Ваш идеальный капсульный гардероб</b>\n",
-        "Вот 10–15 вещей, которые идеально сочетаются между собой "
-        "и покроют 90% ваших выходов:\n",
-    ]
-
+    # Формируем краткий текстовый список для подписи к фото
+    lines = ["🎒 <b>Ваш идеальный капсульный гардероб</b>\n"]
     by_cat = {}
     for item in capsule:
         by_cat.setdefault(item.category, []).append(item)
@@ -3411,15 +3456,13 @@ async def capsule_node(state: BotState) -> dict:
         ("аксессуар", "🧢 Аксессуары"),
     ]:
         if cat in by_cat:
-            lines.append(f"<b>{label}:</b>")
-            for item in by_cat[cat]:
-                colors = ", ".join(get_colors(item))
-                lines.append(f"• {item.type} ({colors})")
-            lines.append("")
+            items_str = ", ".join(
+                f"{i.type} ({', '.join(get_colors(i))})" for i in by_cat[cat]
+            )
+            lines.append(f"<b>{label}:</b> {items_str}")
 
     text = "\n".join(lines).rstrip()
 
-    # Сохраняем ID капсулы в state, чтобы знать, какие вещи показывать для дизлайка
     capsule_ids = [i.id for i in capsule]
 
     kb = [
@@ -3427,12 +3470,29 @@ async def capsule_node(state: BotState) -> dict:
         [{"text": "👎 Исключить вещь", "callback_data": "capsule:dislike"}],
     ]
 
+    # Подготавливаем данные для Pillow
+    capsule_cfg = {
+        "photo_file_ids": [
+            i.generated_photo_file_id or i.photo_file_id for i in capsule
+        ],
+        "labels": [i.type for i in capsule],
+        "city": "",  # Для капсулы город не нужен
+        "weather_str": "Универсальная капсула на каждый день",
+        "date_str": datetime.now().strftime("%d.%m.%Y"),
+    }
+
     return {
         "messages": [
-            AIMessage(content=text, additional_kwargs={"inline_keyboard": kb})
+            AIMessage(
+                content=text,
+                additional_kwargs={
+                    "inline_keyboard": kb,
+                    "capsule_collage": capsule_cfg,  # <-- Маркер для handlers
+                },
+            )
         ],
         "step": "capsule_view",
-        "capsule_ids": capsule_ids,  # Сохраняем в стейт
+        "capsule_ids": capsule_ids,
     }
 
 

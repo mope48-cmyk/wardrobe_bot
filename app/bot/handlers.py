@@ -234,8 +234,8 @@ async def _send_ai_message(message: Message, ai_msg) -> None:
 
     effective_markup = inline_markup or reply_markup
 
-    # 1a. Vogue-коллаж (приоритет)
-    vogue_cfg = extra.get("vogue_collage")
+    # 1a. Vogue-коллаж или Капсульный коллаж
+    vogue_cfg = extra.get("vogue_collage") or extra.get("capsule_collage")
     if vogue_cfg:
         if await _try_send_vogue_collage(message, ai_msg, vogue_cfg, inline_markup):
             return
