@@ -1,6 +1,5 @@
 """Тесты математического алгоритма подбора (app/services/outfit.py)."""
 
-import pytest
 
 from app.services.outfit import (
     _pick_accessories,

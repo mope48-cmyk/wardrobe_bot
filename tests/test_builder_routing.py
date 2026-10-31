@@ -4,7 +4,6 @@ import pytest
 
 from app.graph.builder import _match_free_text_intent, route_condition
 
-
 # ---------------------------------------------------------------------------
 # _match_free_text_intent
 # ---------------------------------------------------------------------------

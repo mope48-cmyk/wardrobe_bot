@@ -1,6 +1,5 @@
 """Тесты онбординга (app/graph/nodes.py)."""
 
-import pytest
 
 from app.graph import nodes as N
 
@@ -90,7 +89,6 @@ async def test_persist_celebration_at_exactly_5(monkeypatch, make_item):
 
     async def fake_add_item(**kwargs):
         captured["kwargs"] = kwargs
-        return None
 
     async def fake_get_items(user_id):
         return [make_item(id=i) for i in range(5)]

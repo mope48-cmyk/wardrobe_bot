@@ -1,6 +1,5 @@
 """Тесты репозитория на временной SQLite-БД (app/db/repository.py)."""
 
-import pytest
 
 from app.db.repository import (
     add_disliked_item,
@@ -14,7 +13,6 @@ from app.db.repository import (
     update_item_field,
     update_morning_settings,
 )
-
 
 # ---------------------------------------------------------------------------
 # WardrobeItem CRUD
