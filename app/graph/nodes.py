@@ -156,20 +156,39 @@ async def _persist_item(state: BotState, draft: dict) -> dict:
         }
 
     waterproof_str = "да" if draft.get("waterproof", False) else "нет"
+    base_success = (
+        f"Готово! Сохранил вещь:\n"
+        f"• {draft.get('category', 'верх')} / {draft.get('type', 'вещь')}\n"
+        f"• цвета: {', '.join(item_colors) if item_colors else '—'}\n"
+        f"• материал: {draft.get('material') or '—'}\n"
+        f"• тепло: {draft.get('warmth_level', 3)}/5\n"
+        f"• водонепроницаемая: {waterproof_str}\n"
+        f"• стиль: {draft.get('formal_level', 'casual')}\n"
+        f"• сезон: {draft.get('season', 'универсальная')}\n\n"
+    )
+
+    # Получаем актуальный статус онбординга
+    onboarding_text, is_ready = await _get_onboarding_state(state["user_id"])
+
+    if is_ready:
+        # Если только что перешагнули порог в 5 вещей
+        if len(await get_items(state["user_id"])) == 5:
+            final_text = (
+                f"{base_success}"
+                f"🎉 <b>Браво! У вас 5 вещей!</b>\n\n"
+                f"Теперь мой стилевой профиль готов. Зайдите в меню «✨ Extra» -> «🧬 Мой стиль», "
+                f"чтобы получить вашу первую ДНК-карточку. Или нажмите «🌤 Подобрать образ», чтобы я собрал вам ансамбль!"
+            )
+        else:
+            final_text = base_success + "Что-нибудь ещё? Выберите действие в меню."
+    else:
+        # Если вещей все еще меньше 5
+        final_text = f"{base_success}{onboarding_text}"
+
     return {
         "messages": [
             AIMessage(
-                content=(
-                    "Готово! Сохранил вещь:\n"
-                    f"• {draft.get('category', 'верх')} / {draft.get('type', 'вещь')}\n"
-                    f"• цвета: {', '.join(item_colors) if item_colors else '—'}\n"
-                    f"• материал: {draft.get('material') or '—'}\n"
-                    f"• тепло: {draft.get('warmth_level', 3)}/5\n"
-                    f"• водонепроницаемая: {waterproof_str}\n"
-                    f"• стиль: {draft.get('formal_level', 'casual')}\n"
-                    f"• сезон: {draft.get('season', 'универсальная')}\n\n"
-                    "Добавьте ещё вещь командой /add."
-                ),
+                content=final_text,
                 additional_kwargs=_kb(MENU_KEYBOARD),
             )
         ],
@@ -248,11 +267,52 @@ HELP_TEXT = (
 
 # ---------- Статические команды ----------
 
+async def _get_onboarding_state(user_id: int) -> tuple[str, bool]:
+    """Возвращает (текст_приветствия, гардероб_готов)."""
+    items = await get_items(user_id)
+    count = len(items)
+
+    # Если вещей 5 и больше — показываем обычное приветствие
+    if count >= 5:
+        return WELCOME_TEXT, True
+
+    # Рисуем прогресс-бар (из 5 квадратиков)
+    progress = "🟩" * count + "⬜️" * (5 - count)
+
+    # Анализируем, чего не хватает
+    cats = {i.category for i in items}
+    layers = {getattr(i, "layer", "base") for i in items}
+
+    suggestion = "любую красивую вещь"
+    if "верх" not in cats:
+        suggestion = "вашу любимую футболку или рубашку"
+    elif "низ" not in cats:
+        suggestion = "джинсы или брюки"
+    elif "обувь" not in cats:
+        suggestion = "кроссовки или ботинки"
+    elif "outer" not in layers:
+        suggestion = "куртку или пальто"
+    else:
+        # Все категории есть, но меньше 5 вещей
+        suggestion = "ещё одну вещь, которая вам нравится"
+
+    text = (
+        f"Браво! Я — ваш личный историк моды. Я готов создать ваш стилевой профиль, "
+        f"но для этого мне нужно хотя бы 5 вещей.\n\n"
+        f"<b>Прогресс:</b> {progress} ({count}/5)\n\n"
+        f"Давайте начнем! Пришлите мне фото: <b>{suggestion}</b>.\n"
+        f"<i>(Просто отправьте фото в чат, и я всё сделаю сам)</i>"
+    )
+    return text, False
+
+
 async def start_node(state: BotState) -> dict:
     logger.info("start_node: user_id=%s", state.get("user_id"))
+    text, is_ready = await _get_onboarding_state(state["user_id"])
+
     return {
         "messages": [
-            AIMessage(content=WELCOME_TEXT, additional_kwargs=_kb(MENU_KEYBOARD))
+            AIMessage(content=text, additional_kwargs=_kb(MENU_KEYBOARD))
         ],
         "intent": None, "step": None, "draft_item": None,
     }
