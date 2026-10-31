@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 async def send_morning_push(bot: Bot, chat_id: int, settings) -> None:
     """Сгенерировать и отправить утренний образ."""
+    logger.info(f"Начинаем сборку утреннего образа для {chat_id}")
+
     weather = await get_weather(settings.lat, settings.lon)
     if not weather:
         logger.error(f"Утренний пуш: нет погоды для {chat_id}")
@@ -25,10 +27,12 @@ async def send_morning_push(bot: Bot, chat_id: int, settings) -> None:
 
     items = await get_items(chat_id)
     if not items:
+        logger.warning(f"Утренний пуш: гардероб пуст для {chat_id}")
         return
 
     outfits = select_outfit(list(items), weather, settings.occasion)
     if not outfits or (not outfits[0].items and outfits[0].no_candidates):
+        logger.warning(f"Утренний пуш: алгоритм не смог собрать образ для {chat_id}")
         return
 
     best_outfit = outfits[0]
@@ -62,6 +66,7 @@ async def send_morning_push(bot: Bot, chat_id: int, settings) -> None:
             photos.append(img_bytes)
 
     if not photos:
+        logger.warning(f"Утренний пуш: не удалось скачать фото для {chat_id}")
         return
 
     try:

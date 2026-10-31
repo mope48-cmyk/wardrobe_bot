@@ -396,7 +396,16 @@ async def dna_start_node(state: BotState) -> dict:
                 additional_kwargs={
                     "dna_card_data": card_data,
                     "inline_keyboard": [
-                        [{"text": "👕 К гардеробу", "callback_data": "list:menu"}]
+                        [{"text": "👕 К гардеробу", "callback_data": "list:menu"}],
+                        [
+                            {
+                                "text": "📤 Поделиться",
+                                "url": (
+                                    "https://t.me/share/url?url=https://t.me/MyWordroobBot"
+                                    "&text=Смотри, какой стиль у меня! Узнай свой в @MyWordroobBot"
+                                ),
+                            }
+                        ],
                     ],
                 },
             )
@@ -532,6 +541,23 @@ async def verdict_photo_node(state: BotState) -> dict:
         messages.append(
             AIMessage(content=content, additional_kwargs=_kb(MENU_KEYBOARD))
         )
+
+    # Добавляем кнопку "Поделиться" в самый последний кусок текста (или в единственный)
+    if messages:
+        extra = dict(messages[-1].additional_kwargs or {})
+        extra["inline_keyboard"] = [
+            [
+                {
+                    "text": "📤 Поделиться приговором",
+                    "url": (
+                        "https://t.me/share/url?url=https://t.me/MyWordroobBot"
+                        "&text=ИИ-стилист вынес мне приговор! А тебе слабо? Жми @MyWordroobBot"
+                    ),
+                }
+            ]
+        ]
+        # Сохраняем клавиатуру с меню + добавляем кнопку шаринга
+        messages[-1].additional_kwargs = extra
 
     return {
         "messages": messages,
@@ -2814,6 +2840,19 @@ async def outfit_variant_node(state: BotState) -> dict:
     if row:
         kb.append(row)
 
+    # НОВАЯ КНОПКА: Поделиться образом
+    kb.append(
+        [
+            {
+                "text": "📤 Поделиться образом",
+                "url": (
+                    "https://t.me/share/url?url=https://t.me/MyWordroobBot"
+                    "&text=Мой образ на сегодня от ИИ-стилиста! Собери свой в @MyWordroobBot"
+                ),
+            }
+        ]
+    )
+
     labels = [i.type for i in best_outfit_items]
     vogue_cfg = {
         "photo_file_ids": [
@@ -2918,7 +2957,10 @@ async def morning_set_time_node(state: BotState) -> dict:
 
     from app.db.repository import update_morning_settings
 
-    await update_morning_settings(state["user_id"], time_str=text, enabled=True)
+    # ДОБАВЛЯЕМ last_sent_date=None — сброс даты последней отправки
+    await update_morning_settings(
+        state["user_id"], time_str=text, enabled=True, last_sent_date=None
+    )
     return await morning_settings_node(state)
 
 

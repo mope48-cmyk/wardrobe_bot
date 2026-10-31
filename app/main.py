@@ -50,6 +50,13 @@ async def check_morning_pushes(bot):
 
     try:
         users = await get_users_for_morning_push(current_time, current_day)
+        # ЛОГ: покажет, сколько юзеров найдено
+        if users:
+            logging.info(
+                f"⏰ Утренняя сводка: время {current_time}, "
+                f"найдено {len(users)} юзеров."
+            )
+
         for user in users:
             await send_morning_push(bot, user.user_id, user)
     except Exception:
