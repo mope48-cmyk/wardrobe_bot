@@ -51,6 +51,12 @@ class WardrobeItem(Base):
     # Водонепроницаемость
     waterproof: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Толщина 1–5 (1 — тонкая футболка, 5 — толстый пуховик)
+    thickness: Mapped[int] = mapped_column(Integer, default=3)
+
+    # Наличие капюшона
+    has_hood: Mapped[bool] = mapped_column(Boolean, default=False)
+
     # Формальность: casual / business / sport
     formal_level: Mapped[str] = mapped_column(String(32), default="casual")
 

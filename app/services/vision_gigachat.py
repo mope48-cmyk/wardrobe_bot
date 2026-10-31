@@ -81,6 +81,8 @@ async def analyze_clothing_with_gigachat(image_bytes: bytes) -> dict | None:
         "- colors: список из 1-3 основных цветов на русском (например, ['черный', 'белый'])\n"
         "- material: материал на русском (хлопок, кожа, джинса, шерсть и т.д.)\n"
         "- warmth_level: число от 1 (очень легко) до 5 (очень тепло)\n"
+        "- thickness: толщина вещи от 1 (тонкая футболка) до 5 (толстый пуховик)\n"
+        "- has_hood: true/false (есть ли капюшон)\n"
         "- waterproof: true/false (может ли промокнуть)\n"
         "- formal_level: 'casual', 'business' или 'sport'\n"
         "- season: 'лето', 'демисезон', 'зима' или 'универсальная'\n"
@@ -126,6 +128,10 @@ async def analyze_clothing_with_gigachat(image_bytes: bytes) -> dict | None:
         data["colors"] = [str(c).strip().lower() for c in colors[:3]]
 
         data["warmth_level"] = max(1, min(5, int(data.get("warmth_level", 3))))
+
+        # Валидация и парсинг новых полей
+        data["thickness"] = max(1, min(5, int(data.get("thickness", 3))))
+        data["has_hood"] = bool(data.get("has_hood", False))
 
         return data
     except Exception:

@@ -138,6 +138,8 @@ async def _persist_item(state: BotState, draft: dict) -> dict:
             # Безопасные значения по умолчанию:
             warmth_level=draft.get("warmth_level", 3),
             waterproof=draft.get("waterproof", False),
+            thickness=draft.get("thickness", 3),
+            has_hood=draft.get("has_hood", False),
             formal_level=draft.get("formal_level", "casual"),
             season=draft.get("season", "универсальная"),
             layer=draft.get("layer", "base"),
@@ -685,6 +687,8 @@ def _item_caption(item) -> str:
     attrs_str = " | ".join(parts)
 
     waterproof_mark = "💧 " if item.waterproof else ""
+    hood_mark = " 🧥(капюшон)" if getattr(item, "has_hood", False) else ""
+    thickness = getattr(item, "thickness", 3)
 
     laundry_mark = (
         "🧺 <b>В СТИРКЕ</b>\n" if getattr(item, "is_in_laundry", False) else ""
@@ -693,7 +697,7 @@ def _item_caption(item) -> str:
         f"<b>{item.category} / {item.type}</b>\n"
         f"{laundry_mark}"
         f"{attrs_str}\n"
-        f"{waterproof_mark}тепло: {item.warmth_level}/5 | "
+        f"{waterproof_mark}тепло: {item.warmth_level}/5 | толщина: {thickness}/5{hood_mark}\n"
         f"стиль: {item.formal_level} | сезон: {item.season}"
     )
 
@@ -1005,6 +1009,8 @@ EDIT_FIELD_TO_DB = {
     "material": "material",
     "warmth": "warmth_level",
     "waterproof": "waterproof",
+    "thickness": "thickness",
+    "has_hood": "has_hood",
     "formal": "formal_level",
     "season": "season",
     "layer": "layer",
@@ -1018,6 +1024,8 @@ EDIT_FIELD_LABEL = {
     "material": "Материал",
     "warmth": "Тепло (1–5)",
     "waterproof": "Водонепроницаемость (да/нет)",
+    "thickness": "Толщина (1-5)",
+    "has_hood": "Наличие капюшона",
     "formal": "Стиль (casual / business / sport)",
     "season": "Сезон (лето / демисезон / зима / универсальная)",
     "layer": "Слой",
@@ -1051,6 +1059,17 @@ CHOICE_EDIT_FIELDS: dict[str, list[tuple[str, str, object]]] = {
         ("5", "5", 5),
     ],
     "waterproof": [
+        ("Да", "yes", True),
+        ("Нет", "no", False),
+    ],
+    "thickness": [
+        ("1", "1", 1),
+        ("2", "2", 2),
+        ("3", "3", 3),
+        ("4", "4", 4),
+        ("5", "5", 5),
+    ],
+    "has_hood": [
         ("Да", "yes", True),
         ("Нет", "no", False),
     ],
@@ -1217,6 +1236,10 @@ async def list_edit_node(state: BotState) -> dict:
         ],
         [
             {"text": "Водонепроницаемость", "callback_data": "list:edit:waterproof"},
+        ],
+        [
+            {"text": "Толщина", "callback_data": "list:edit:thickness"},
+            {"text": "Капюшон", "callback_data": "list:edit:has_hood"},
         ],
         [
             {"text": "❌ Отмена", "callback_data": "list:edit:cancel"},

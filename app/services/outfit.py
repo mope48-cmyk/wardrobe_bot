@@ -363,6 +363,21 @@ def _score_item(
         0.15 * season_fit +
         0.15 * material_fit
     )
+
+    # НОВОЕ: Учет толщины для верхней одежды
+    if slot == "top" and getattr(item, "layer", "base") == "outer":
+        thickness = getattr(item, "thickness", 3)
+        # Если очень холодно, но куртка тонкая — штрафуем
+        if teff < 0 and thickness <= 2:
+            base -= 0.2
+        # Если тепло, но куртка слишком толстая — тоже штрафуем
+        if teff > 15 and thickness >= 4:
+            base -= 0.2
+
+    # НОВОЕ: Учет капюшона (если идет дождь, капюшон — это плюс)
+    if need_waterproof and getattr(item, "has_hood", False):
+        base += 0.1  # Небольшой бонус к привлекательности
+
     return base * priority
 
 

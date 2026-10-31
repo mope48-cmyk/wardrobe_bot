@@ -24,6 +24,8 @@ async def add_item(
     material: str = "",
     warmth_level: int = 3,
     waterproof: bool = False,
+    thickness: int = 3,
+    has_hood: bool = False,
     formal_level: str = "casual",
     season: str = "универсальная",
     layer: str = "base",
@@ -44,6 +46,8 @@ async def add_item(
             material=material,
             warmth_level=warmth_level,
             waterproof=waterproof,
+            thickness=thickness,
+            has_hood=has_hood,
             formal_level=formal_level,
             season=season,
             layer=layer,
@@ -116,6 +120,7 @@ async def update_item_field(
         "waterproof", "formal_level", "season", "layer",
         "generated_photo_file_id", "accessory_occasions",  # <-- ДОБАВИТЬ
         "is_in_laundry", "laundry_start_date",  # <-- Стирка
+        "thickness", "has_hood",  # <-- ДОБАВИТЬ ЭТИ ДВА
     }
     if field not in allowed:
         logger.warning("Попытка обновить запрещённое поле: %s", field)
