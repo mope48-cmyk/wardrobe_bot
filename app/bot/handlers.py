@@ -19,6 +19,7 @@ from aiogram.utils.chat_action import ChatActionSender
 from langchain_core.messages import HumanMessage
 
 from app.graph.builder import build_graph
+from app.services.html_sanitizer import sanitize_html
 from app.services.product_photo_bg import generate_product_photo_bg
 
 logger = logging.getLogger(__name__)
@@ -174,7 +175,7 @@ async def _try_send_vogue_collage(
 
         await message.answer_photo(
             photo=BufferedInputFile(collage_bytes, filename="vogue.jpg"),
-            caption=ai_msg.content or "…",
+            caption=sanitize_html(ai_msg.content or ""),
             parse_mode="HTML",
             reply_markup=inline_markup,
         )
@@ -199,6 +200,8 @@ async def _send_ai_message(message: Message, ai_msg) -> None:
       а старое фото остаётся выше в истории — нормальное поведение Telegram).
     """
     extra = getattr(ai_msg, "additional_kwargs", None) or {}
+    # Ответы LLM могут содержать битый/злонамеренный HTML — приводим к безопасному
+    safe_content = sanitize_html(ai_msg.content or "")
 
     # --- 0. ГЕНЕРАЦИЯ ДНК-КАРТОЧКИ (перехват до Vogue-коллажа) ---
     dna_data = extra.get("dna_card_data")
@@ -218,7 +221,7 @@ async def _send_ai_message(message: Message, ai_msg) -> None:
 
             await message.answer_photo(
                 photo=BufferedInputFile(card_bytes, filename="my_dna.jpg"),
-                caption=ai_msg.content,
+                caption=safe_content,
                 parse_mode="HTML",
                 reply_markup=_build_inline_markup(extra.get("inline_keyboard")),
             )
@@ -250,7 +253,7 @@ async def _send_ai_message(message: Message, ai_msg) -> None:
                 media.append(
                     InputMediaPhoto(
                         media=fid,
-                        caption=(ai_msg.content or None) if i == 0 else None,
+                        caption=(safe_content or None) if i == 0 else None,
                         parse_mode="HTML" if i == 0 else None,
                     )
                 )
@@ -271,7 +274,7 @@ async def _send_ai_message(message: Message, ai_msg) -> None:
             await message.bot.edit_message_caption(
                 chat_id=message.chat.id,
                 message_id=edit_message_id,
-                caption=ai_msg.content or "…",
+                caption=safe_content or "…",
                 parse_mode="HTML",
                 reply_markup=inline_markup,
             )
@@ -289,7 +292,7 @@ async def _send_ai_message(message: Message, ai_msg) -> None:
                 message_id=edit_message_id,
                 media=InputMediaPhoto(
                     media=photo_file_id,
-                    caption=ai_msg.content or "…",
+                    caption=safe_content or "…",
                     parse_mode="HTML",
                 ),
                 reply_markup=inline_markup,
@@ -305,7 +308,7 @@ async def _send_ai_message(message: Message, ai_msg) -> None:
         try:
             await message.answer_photo(
                 photo=photo_file_id,
-                caption=ai_msg.content or "…",
+                caption=safe_content or "…",
                 reply_markup=effective_markup,
             )
             return
@@ -314,7 +317,7 @@ async def _send_ai_message(message: Message, ai_msg) -> None:
 
     # 5. Текстовое сообщение (в т.ч. меню разделов — новый текст с кнопками,
     #    старое фото остаётся выше в истории — нормальное поведение Telegram)
-    await message.answer(ai_msg.content or "…", reply_markup=effective_markup)
+    await message.answer(safe_content or "…", reply_markup=effective_markup)
 
 
 async def _process_next_album_item(message: Message, state: dict) -> None:
