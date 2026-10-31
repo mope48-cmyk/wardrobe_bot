@@ -6,9 +6,9 @@ __pycache__/
 data/*.db
 .idea/
 .vscode/
-# Временные скрипты
-check_*.py
-test_*.py
+# Временные скрипты (только в корне, не тесты)
+/check_*.py
+/test_*.py
 !tests/
 *.rar
 *.zip
