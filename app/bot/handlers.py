@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 
 from aiogram import Router
+from aiogram.utils.chat_action import ChatActionSender
 from aiogram.types import (
     BufferedInputFile,
     CallbackQuery,
@@ -157,14 +158,17 @@ async def _try_send_vogue_collage(
             )
             return False
 
-        collage_bytes = await asyncio.to_thread(
-            build_collage,
-            photos_bytes,
-            labels,
-            vogue_cfg.get("city", ""),
-            vogue_cfg.get("weather_str", ""),
-            vogue_cfg.get("date_str", ""),
-        )
+        async with ChatActionSender.upload_photo(
+            bot=message.bot, chat_id=message.chat.id
+        ):
+            collage_bytes = await asyncio.to_thread(
+                build_collage,
+                photos_bytes,
+                labels,
+                vogue_cfg.get("city", ""),
+                vogue_cfg.get("weather_str", ""),
+                vogue_cfg.get("date_str", ""),
+            )
 
         await message.answer_photo(
             photo=BufferedInputFile(collage_bytes, filename="vogue.jpg"),
@@ -339,7 +343,8 @@ async def _process_next_album_item(message: Message, state: dict) -> None:
     }
     config = _thread_config(state["chat_id"])
 
-    res = await graph.ainvoke(input_state, config=config)
+    async with ChatActionSender.typing(bot=message.bot, chat_id=message.chat.id):
+        res = await graph.ainvoke(input_state, config=config)
     all_msgs = res["messages"]
     last_h_idx = max(
         (i for i, m in enumerate(all_msgs) if m.__class__.__name__ == "HumanMessage"),
@@ -414,7 +419,9 @@ async def handle_message(message: Message, album: list[Message] = None) -> None:
 
         config = _thread_config(message.chat.id)
         try:
-            result = await graph.ainvoke(input_state, config=config)
+            # Показываем "печатает...", пока граф думает
+            async with ChatActionSender.typing(bot=message.bot, chat_id=message.chat.id):
+                result = await graph.ainvoke(input_state, config=config)
         except Exception:
             logger.exception("Ошибка при вызове графа")
             await message.answer("Что-то пошло не так. Попробуйте ещё раз.")
@@ -488,7 +495,9 @@ async def handle_callback(callback: CallbackQuery) -> None:
 
         config = _thread_config(input_state["chat_id"])
         try:
-            result = await graph.ainvoke(input_state, config=config)
+            # Показываем "печатает...", пока граф думает (например, при ИИ-анализе)
+            async with ChatActionSender.typing(bot=callback.bot, chat_id=callback.message.chat.id):
+                result = await graph.ainvoke(input_state, config=config)
         except Exception:
             logger.exception("Ошибка при вызове графа из callback")
             await callback.message.answer("Что-то пошло не так.")
