@@ -22,6 +22,8 @@ COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install \
     --index-url https://download.pytorch.org/whl/cpu \
+    --timeout 900 \
+    --retries 50 \
     torch torchvision
 
 # 2. Остальные зависимости — из Aliyun, тоже с cache mount
