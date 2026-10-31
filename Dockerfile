@@ -16,12 +16,11 @@ WORKDIR /app
 
 COPY requirements.txt .
 
-# 1. torch + torchvision из CPU-индекса PyTorch (без CUDA)
-# Кэш pip сохраняется между сборками через cache mount — упавшие
-# скачивания не теряются при повторных попытках.
+# 1. torch + torchvision из зеркала SJTU (чтобы не висло на официальном сервере)
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install \
-    --index-url https://download.pytorch.org/whl/cpu \
+    --index-url https://mirror.sjtu.edu.cn/pytorch-wheels/cpu \
+    --trusted-host mirror.sjtu.edu.cn \
     --timeout 900 \
     --retries 50 \
     torch torchvision
