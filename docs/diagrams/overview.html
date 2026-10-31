@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wardrobe Bot — Architecture Overview</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'JetBrains Mono',monospace; background:#020617; min-height:100vh; padding:2rem; color:white; }
+  .container { max-width:1200px; margin:0 auto; }
+  .header { margin-bottom:2rem; }
+  .header-row { display:flex; align-items:center; gap:1rem; margin-bottom:.5rem; }
+  .pulse-dot { width:12px; height:12px; background:#22d3ee; border-radius:50%; animation:pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+  h1 { font-size:1.5rem; font-weight:700; letter-spacing:-.025em; }
+  .subtitle { color:#94a3b8; font-size:.875rem; margin-left:1.75rem; }
+  .diagram-container { background:rgba(15,23,42,.5); border-radius:1rem; border:1px solid #1e293b; padding:1.5rem; overflow-x:auto; }
+  svg { width:100%; min-width:900px; display:block; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:1rem; margin-top:2rem; }
+  .card { background:rgba(15,23,42,.5); border-radius:.75rem; border:1px solid #1e293b; padding:1.25rem; }
+  .card-header { display:flex; align-items:center; gap:.5rem; margin-bottom:.75rem; }
+  .card-dot { width:8px; height:8px; border-radius:50%; }
+  .card-dot.cyan{background:#22d3ee} .card-dot.emerald{background:#34d399}
+  .card-dot.violet{background:#a78bfa} .card-dot.amber{background:#fbbf24}
+  .card-dot.rose{background:#fb7185}
+  .card h3 { font-size:.875rem; font-weight:600; }
+  .card ul { list-style:none; color:#94a3b8; font-size:.75rem; }
+  .card li { margin-bottom:.375rem; }
+  .footer { text-align:center; margin-top:1.5rem; color:#475569; font-size:.75rem; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="header-row"><div class="pulse-dot"></div><h1>Wardrobe Bot — Architecture</h1></div>
+    <p class="subtitle">Telegram-бот «Гардероб»: aiogram 3 · LangGraph · SQLite · GigaChat/OpenRouter · Open-Meteo</p>
+  </div>
+
+  <div class="diagram-container">
+    <svg viewBox="0 0 1000 760">
+      <defs>
+        <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/>
+        </marker>
+        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#grid)"/>
+
+      <!-- ================= Внешние компоненты ================= -->
+
+      <!-- Telegram User -->
+      <rect x="40" y="70" width="150" height="60" rx="6" fill="rgba(30,41,59,.5)" stroke="#94a3b8" stroke-width="1.5"/>
+      <text x="115" y="95" fill="white" font-size="11" font-weight="600" text-anchor="middle">Telegram User</text>
+      <text x="115" y="112" fill="#94a3b8" font-size="9" text-anchor="middle">Мобильное приложение</text>
+
+      <!-- Telegram Bot API -->
+      <rect x="40" y="180" width="150" height="60" rx="6" fill="rgba(136,19,55,.4)" stroke="#fb7185" stroke-width="1.5"/>
+      <text x="115" y="205" fill="white" font-size="11" font-weight="600" text-anchor="middle">Telegram Bot API</text>
+      <text x="115" y="222" fill="#94a3b8" font-size="9" text-anchor="middle">long polling : updates</text>
+      <line x1="115" y1="130" x2="115" y2="178" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+      <!-- Внешние API внизу слева -->
+      <rect x="40" y="460" width="150" height="60" rx="6" fill="rgba(30,41,59,.5)" stroke="#94a3b8" stroke-width="1.5"/>
+      <text x="115" y="485" fill="white" font-size="11" font-weight="600" text-anchor="middle">GigaChat</text>
+      <text x="115" y="502" fill="#94a3b8" font-size="9" text-anchor="middle">мультимодальный LLM</text>
+
+      <rect x="40" y="540" width="150" height="60" rx="6" fill="rgba(30,41,59,.5)" stroke="#94a3b8" stroke-width="1.5"/>
+      <text x="115" y="565" fill="white" font-size="11" font-weight="600" text-anchor="middle">OpenRouter</text>
+      <text x="115" y="582" fill="#94a3b8" font-size="9" text-anchor="middle">fallback LLM (free)</text>
+
+      <rect x="40" y="620" width="150" height="60" rx="6" fill="rgba(30,41,59,.5)" stroke="#94a3b8" stroke-width="1.5"/>
+      <text x="115" y="645" fill="white" font-size="11" font-weight="600" text-anchor="middle">Open-Meteo</text>
+      <text x="115" y="662" fill="#94a3b8" font-size="9" text-anchor="middle">погода / геокодинг</text>
+
+      <!-- ================= Приложение (контейнер) ================= -->
+
+      <rect x="250" y="50" width="690" height="660" rx="12" fill="rgba(251,191,36,.04)" stroke="#fbbf24" stroke-width="1" stroke-dasharray="8,4"/>
+      <text x="264" y="70" fill="#fbbf24" font-size="10" font-weight="600">Docker: wardrobe_bot</text>
+
+      <!-- aiogram -->
+      <rect x="310" y="90" width="280" height="80" rx="6" fill="rgba(8,51,68,.4)" stroke="#22d3ee" stroke-width="1.5"/>
+      <text x="450" y="112" fill="white" font-size="11" font-weight="600" text-anchor="middle">aiogram 3</text>
+      <text x="450" y="128" fill="#94a3b8" font-size="9" text-anchor="middle">handlers.py · middlewares.py</text>
+      <text x="450" y="142" fill="#94a3b8" font-size="9" text-anchor="middle">сборка input_state → отправка</text>
+      <text x="450" y="158" fill="#22d3ee" font-size="8" text-anchor="middle">_send_ai_message · санитайзинг</text>
+
+      <!-- LangGraph -->
+      <rect x="310" y="210" width="280" height="100" rx="6" fill="rgba(6,78,59,.4)" stroke="#34d399" stroke-width="1.5"/>
+      <text x="450" y="232" fill="white" font-size="11" font-weight="600" text-anchor="middle">LangGraph</text>
+      <text x="450" y="248" fill="#94a3b8" font-size="9" text-anchor="middle">builder.py · route_condition</text>
+      <text x="450" y="264" fill="#94a3b8" font-size="9" text-anchor="middle">nodes.py (35+ узлов)</text>
+      <text x="450" y="280" fill="#94a3b8" font-size="9" text-anchor="middle">state.py (BotState)</text>
+      <text x="450" y="296" fill="#34d399" font-size="8" text-anchor="middle">HITL · шаг · интент</text>
+
+      <!-- Services -->
+      <rect x="310" y="350" width="280" height="210" rx="6" fill="rgba(6,78,59,.4)" stroke="#34d399" stroke-width="1.5"/>
+      <text x="450" y="372" fill="white" font-size="11" font-weight="600" text-anchor="middle">Services (app/services)</text>
+      <text x="450" y="392" fill="#94a3b8" font-size="9" text-anchor="middle">outfit/in · математический подбор</text>
+      <text x="450" y="408" fill="#94a3b8" font-size="9" text-anchor="middle">llm_stylist · GigaChat → OpenRouter</text>
+      <text x="450" y="424" fill="#94a3b8" font-size="9" text-anchor="middle">vision · segmentation · product_photo</text>
+      <text x="450" y="440" fill="#94a3b8" font-size="9" text-anchor="middle">vogue_cover · dna_card</text>
+      <text x="450" y="456" fill="#94a3b8" font-size="9" text-anchor="middle">weather (Open-Meteo)</text>
+      <text x="450" y="472" fill="#94a3b8" font-size="9" text-anchor="middle">morning_push · capsule · gamification</text>
+      <text x="450" y="490" fill="#34d399" font-size="8" text-anchor="middle">html_sanitizer · telegram_files</text>
+
+      <!-- SQLite -->
+      <rect x="650" y="350" width="240" height="130" rx="6" fill="rgba(76,29,149,.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="770" y="375" fill="white" font-size="11" font-weight="600" text-anchor="middle">SQLite</text>
+      <text x="770" y="395" fill="#94a3b8" font-size="9" text-anchor="middle">wardrobe_items</text>
+      <text x="770" y="411" fill="#94a3b8" font-size="9" text-anchor="middle">user_morning_settings</text>
+      <text x="770" y="427" fill="#94a3b8" font-size="9" text-anchor="middle">user_preferences</text>
+      <text x="770" y="443" fill="#94a3b8" font-size="9" text-anchor="middle">user_gamification</text>
+      <text x="770" y="463" fill="#a78bfa" font-size="8" text-anchor="middle">aiosqlite · data/wardrobe.db</text>
+
+      <!-- Планировщик -->
+      <rect x="310" y="600" width="580" height="70" rx="6" fill="rgba(120,53,15,.3)" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="600" y="622" fill="white" font-size="11" font-weight="600" text-anchor="middle">APScheduler (фоновые задачи)</text>
+      <text x="600" y="640" fill="#94a3b8" font-size="9" text-anchor="middle">утренняя сводка (каждую минуту) · broadcast 10:00 · стирка 16:00</text>
+      <text x="600" y="656" fill="#94a3b8" font-size="9" text-anchor="middle">прогрев моделей (warmup)</text>
+
+      <!-- ================= Стрелки ================= -->
+
+      <!-- Bot API -> aiogram -->
+      <line x1="190" y1="210" x2="308" y2="130" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+      <text x="240" y="160" fill="#94a3b8" font-size="8" text-anchor="middle">Bot API → Bot</text>
+
+      <!-- aiogram -> graph -->
+      <line x1="450" y1="170" x2="450" y2="208" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+      <text x="468" y="192" fill="#94a3b8" font-size="8">input_state</text>
+
+      <!-- graph -> services -->
+      <line x1="450" y1="310" x2="450" y2="348" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+      <text x="468" y="332" fill="#94a3b8" font-size="8">nodes → services</text>
+
+      <!-- services -> sqlite -->
+      <line x1="592" y1="420" x2="648" y2="420" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+      <text x="620" y="412" fill="#94a3b8" font-size="8">SQLAlchemy</text>
+
+      <!-- services -> GigaChat/OpenRouter/OpenMeteo (из контейнера влево) -->
+      <path d="M 310 390 L 260 390 L 260 490 L 192 490" fill="none" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrowhead)"/>
+      <text x="190" y="430" fill="#94a3b8" font-size="8" text-anchor="end">LLM API</text>
+
+      <path d="M 310 420 L 270 420 L 270 570 L 192 570" fill="none" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrowhead)"/>
+      <text x="190" y="520" fill="#94a3b8" font-size="8" text-anchor="end">LLM fallback</text>
+
+      <path d="M 310 450 L 280 450 L 280 650 L 192 650" fill="none" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrowhead)"/>
+      <text x="190" y="610" fill="#94a3b8" font-size="8" text-anchor="end">погода</text>
+
+      <!-- Legend -->
+      <text x="700" y="90" fill="white" font-size="10" font-weight="600">Legend</text>
+      <rect x="700" y="102" width="16" height="10" rx="2" fill="rgba(8,51,68,.4)" stroke="#22d3ee" stroke-width="1"/><text x="722" y="110" fill="#94a3b8" font-size="8">Frontend/клиент</text>
+      <rect x="700" y="118" width="16" height="10" rx="2" fill="rgba(6,78,59,.4)" stroke="#34d399" stroke-width="1"/><text x="722" y="126" fill="#94a3b8" font-size="8">Backend</text>
+      <rect x="700" y="134" width="16" height="10" rx="2" fill="rgba(76,29,149,.4)" stroke="#a78bfa" stroke-width="1"/><text x="722" y="142" fill="#94a3b8" font-size="8">Database</text>
+      <rect x="700" y="150" width="16" height="10" rx="2" fill="rgba(120,53,15,.3)" stroke="#fbbf24" stroke-width="1"/><text x="722" y="158" fill="#94a3b8" font-size="8">Задачи/инфра</text>
+      <line x1="700" y1="168" x2="716" y2="168" stroke="#64748b" stroke-width="1" stroke-dasharray="3,3"/><text x="722" y="171" fill="#94a3b8" font-size="8">Внешние API</text>
+    </svg>
+  </div>
+
+  <div class="cards">
+    <div class="card">
+      <div class="card-header"><div class="card-dot cyan"></div><h3>Интерфейс</h3></div>
+      <ul>
+        <li>• Telegram Bot API (long polling)</li>
+        <li>• Обработка: текст, фото, альбомы, callback</li>
+        <li>• Частично фото / медиагруппы / редактирование</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-dot emerald"></div><h3>Логика</h3></div>
+      <ul>
+        <li>• LangGraph: граф состояний (35+ узлов)</li>
+        <li>• Маршрутизация: route_condition + интенты</li>
+        <li>• Сервисы: подбор, LLM, зрение, коллажи</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-dot violet"></div><h3>Данные</h3></div>
+      <ul>
+        <li>• SQLite (aiosqlite) — 4 таблицы</li>
+        <li>• APScheduler: сводки, broadcast, стирка</li>
+        <li>• Модели: SegFormer · SigLIP · rembg</li>
+      </ul>
+    </div>
+  </div>
+
+  <p class="footer">Wardrobe Bot · docs/diagrams/overview.html · 2026</p>
+</div>
+</body>
+</html>

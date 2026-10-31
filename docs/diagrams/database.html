@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wardrobe Bot — Database Schema</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'JetBrains Mono',monospace; background:#020617; min-height:100vh; padding:2rem; color:white; }
+  .container { max-width:1200px; margin:0 auto; }
+  .header { margin-bottom:2rem; }
+  .header-row { display:flex; align-items:center; gap:1rem; margin-bottom:.5rem; }
+  .pulse-dot { width:12px; height:12px; background:#a78bfa; border-radius:50%; animation:pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+  h1 { font-size:1.5rem; font-weight:700; }
+  .subtitle { color:#94a3b8; font-size:.875rem; margin-left:1.75rem; }
+  .diagram-container { background:rgba(15,23,42,.5); border-radius:1rem; border:1px solid #1e293b; padding:1.5rem; overflow-x:auto; }
+  svg { width:100%; min-width:900px; display:block; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:1rem; margin-top:2rem; }
+  .card { background:rgba(15,23,42,.5); border-radius:.75rem; border:1px solid #1e293b; padding:1.25rem; }
+  .card-header { display:flex; align-items:center; gap:.5rem; margin-bottom:.75rem; }
+  .card-dot { width:8px; height:8px; border-radius:50%; }
+  .card-dot.violet{background:#a78bfa} .card-dot.emerald{background:#34d399}
+  .card h3 { font-size:.875rem; font-weight:600; }
+  .card ul { list-style:none; color:#94a3b8; font-size:.75rem; }
+  .card li { margin-bottom:.375rem; }
+  .footer { text-align:center; margin-top:1.5rem; color:#475569; font-size:.75rem; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="header-row"><div class="pulse-dot"></div><h1>Database Schema</h1></div>
+    <p class="subtitle">SQLite · data/wardrobe.db · SQLAlchemy (async)</p>
+  </div>
+
+  <div class="diagram-container">
+    <svg viewBox="0 0 1000 720">
+      <defs>
+        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#grid)"/>
+
+      <!-- ============ wardrobe_items ============ -->
+      <rect x="40" y="50" width="430" height="360" rx="8" fill="rgba(76,29,149,.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="58" y="72" fill="white" font-size="12" font-weight="700">wardrobe_items</text>
+      <text x="58" y="88" fill="#a78bfa" font-size="8">вещи пользователя</text>
+      <line x1="58" y1="96" x2="452" y2="96" stroke="#a78bfa" stroke-width="0.7"/>
+
+      <text x="58" y="114" fill="#94a3b8" font-size="8">id INTEGER PK · user_id INTEGER idx</text>
+      <text x="58" y="130" fill="#94a3b8" font-size="8">photo_file_id · generated_photo_file_id</text>
+      <text x="58" y="146" fill="#94a3b8" font-size="8">category · type · colors(JSON)</text>
+      <text x="58" y="162" fill="#94a3b8" font-size="8">material · warmth_level 1–5</text>
+      <text x="58" y="178" fill="#94a3b8" font-size="8">waterproof · thickness 1–5</text>
+      <text x="58" y="194" fill="#94a3b8" font-size="8">has_hood · use_white_overlay</text>
+      <text x="58" y="210" fill="#94a3b8" font-size="8">formal_level · season · layer</text>
+      <text x="58" y="226" fill="#94a3b8" font-size="8">accessory_occasions(JSON)</text>
+      <text x="58" y="242" fill="#94a3b8" font-size="8">is_in_laundry · laundry_start_date</text>
+      <text x="58" y="258" fill="#94a3b8" font-size="8">created_at</text>
+      <text x="58" y="284" fill="#a78bfa" font-size="8">UPDATE — белый список полей</text>
+      <text x="58" y="300" fill="#a78bfa" font-size="8">(защита id/user_id/created_at)</text>
+
+      <!-- ============ user_preferences ============ -->
+      <rect x="530" y="50" width="430" height="130" rx="8" fill="rgba(76,29,149,.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="548" y="72" fill="white" font-size="12" font-weight="700">user_preferences</text>
+      <text x="548" y="88" fill="#a78bfa" font-size="8">предпочтения</text>
+      <line x1="548" y1="96" x2="942" y2="96" stroke="#a78bfa" stroke-width="0.7"/>
+      <text x="548" y="114" fill="#94a3b8" font-size="8">user_id INTEGER PK</text>
+      <text x="548" y="132" fill="#94a3b8" font-size="8">disliked_items TEXT(JSON) — id исключённых</text>
+      <text x="548" y="152" fill="#94a3b8" font-size="8">вещей (для капсулы)</text>
+
+      <!-- ============ user_morning_settings ============ -->
+      <rect x="530" y="210" width="430" height="200" rx="8" fill="rgba(76,29,149,.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="548" y="232" fill="white" font-size="12" font-weight="700">user_morning_settings</text>
+      <text x="548" y="248" fill="#a78bfa" font-size="8">утренняя сводка</text>
+      <line x1="548" y1="256" x2="942" y2="256" stroke="#a78bfa" stroke-width="0.7"/>
+      <text x="548" y="274" fill="#94a3b8" font-size="8">user_id PK · enabled</text>
+      <text x="548" y="290" fill="#94a3b8" font-size="8">time_str "HH:MM" · days CSV (0=Пн)</text>
+      <text x="548" y="308" fill="#94a3b8" font-size="8">city · lat · lon</text>
+      <text x="548" y="326" fill="#94a3b8" font-size="8">occasion · last_sent_date</text>
+      <text x="548" y="352" fill="#a78bfa" font-size="8">Время — строго по Москве (Europe/Moscow)</text>
+
+      <!-- ============ user_gamification ============ -->
+      <rect x="40" y="440" width="430" height="240" rx="8" fill="rgba(76,29,149,.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="58" y="462" fill="white" font-size="12" font-weight="700">user_gamification</text>
+      <text x="58" y="478" fill="#a78bfa" font-size="8">геймификация</text>
+      <line x1="58" y1="486" x2="452" y2="486" stroke="#a78bfa" stroke-width="0.7"/>
+      <text x="58" y="504" fill="#94a3b8" font-size="8">user_id PK · xp · streak</text>
+      <text x="58" y="520" fill="#94a3b8" font-size="8">last_active_date</text>
+      <text x="58" y="536" fill="#94a3b8" font-size="8">weekly_challenge · challenge_progress</text>
+      <text x="58" y="552" fill="#94a3b8" font-size="8">challenge_target · challenge_week</text>
+      <text x="58" y="568" fill="#94a3b8" font-size="8">achievements TEXT(JSON)</text>
+      <text x="58" y="584" fill="#94a3b8" font-size="8">счётчики: items_added, outfits_created,</text>
+      <text x="58" y="600" fill="#94a3b8" font-size="8">verdicts_done, capsules_built, laundry_done</text>
+      <text x="58" y="628" fill="#a78bfa" font-size="8">XP-формула: 100 · level^1.5</text>
+
+      <!-- ============ Связи ============ -->
+      <line x1="470" y1="120" x2="528" y2="120" stroke="#a78bfa" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arrowhead)"/>
+      <text x="470" y="108" fill="#94a3b8" font-size="8">user_id</text>
+      <line x1="472" y1="340" x2="528" y2="340" stroke="#a78bfa" stroke-width="1.2" stroke-dasharray="4,3"/>
+      <line x1="472" y1="500" x2="528" y2="500" stroke="#a78bfa" stroke-width="1.2" stroke-dasharray="4,3"/>
+      <text x="470" y="420" fill="#94a3b8" font-size="8">общий user_id</text>
+
+      <!-- Legend / метка -->
+      <text x="620" y="450" fill="white" font-size="10" font-weight="600">Примечания</text>
+      <text x="620" y="472" fill="#94a3b8" font-size="9">• Таблицы создаются автоматически (init_db)</text>
+      <text x="620" y="492" fill="#94a3b8" font-size="9">• Миграции для старой БД: app/db/migrations.py</text>
+      <text x="620" y="512" fill="#94a3b8" font-size="9">• Ключ — Telegram user_id</text>
+    </svg>
+  </div>
+
+  <div class="cards">
+    <div class="card">
+      <div class="card-header"><div class="card-dot violet"></div><h3>Хранилище</h3></div>
+      <ul>
+        <li>• SQLite + aiosqlite (async)</li>
+        <li>• Одна БД на всех пользователей</li>
+        <li>• Файл в томе data/</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-dot emerald"></div><h3>Защита полей</h3></div>
+      <ul>
+        <li>• update_item_field — белый список</li>
+        <li>• user_id никогда не перезаписывается</li>
+        <li>• JSON-поля: colors, achievements и т.д.</li>
+      </ul>
+    </div>
+  </div>
+
+  <p class="footer">Wardrobe Bot · docs/diagrams/database.html · 2026</p>
+</div>
+</body>
+</html>
