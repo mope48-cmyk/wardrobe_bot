@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass, field
 
 from app.db.models import WardrobeItem
-from app.db.repository import get_colors, get_accessory_occasions
+from app.db.repository import get_accessory_occasions, get_colors
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +168,7 @@ def _waterproof_fit(item: WardrobeItem, need_waterproof: bool) -> float:
 def _season_fit(item: WardrobeItem, teff: float) -> float:
     """п.2: учёт сезона."""
     ideal = _ideal_season(teff)
-    if item.season == "универсальная" or item.season == ideal:
+    if item.season in ("универсальная", ideal):
         return 1.0
     if item.season in SEASON_ADJACENT.get(ideal, set()):
         return 0.6
@@ -251,10 +251,7 @@ def _accessory_matches(
         return any(k in t for k in warm_acc_kw)
 
     # 3. Жаркая погода
-    if teff > 24 and any(k in t for k in sun_kw):
-        return True
-
-    return False
+    return teff > 24 and any(k in t for k in sun_kw)
 
 
 def _pick_accessories(
@@ -596,7 +593,6 @@ def _select_outfit_fallback(
         return ranked[0]
 
     tops = by_cat.get("верх", [])
-    chosen_top = None
     is_dress = False
 
     if tops:

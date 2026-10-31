@@ -2,6 +2,7 @@
 
 import io
 import logging
+
 from PIL import Image, ImageDraw, ImageFont
 
 logger = logging.getLogger(__name__)
@@ -109,7 +110,6 @@ def build_dna_card(
     f_title = _load_font(FONT_SANS_BOLD, 80)
     f_large = _load_font(FONT_SERIF_BOLD, 110)
     f_text = _load_font(FONT_SANS_REG, 32)
-    f_italic = _load_font(FONT_SANS_ITALIC, 28) # Теперь это обычный шрифт
     f_cta_bold = _load_font(FONT_SANS_BOLD, 36)
 
     # ================= ШАПКА =================
@@ -119,7 +119,10 @@ def build_dna_card(
 
     subtitle = "• СТИЛЕВОЙ ПРОФИЛЬ •"
     bbox = draw.textbbox((0, 0), subtitle, font=f_sub)
-    draw.text(((CARD_W - (bbox[2]-bbox[0])) // 2, MARGIN + 90), subtitle, fill=TEXT_GREY, font=f_sub)
+    draw.text(
+        ((CARD_W - (bbox[2] - bbox[0])) // 2, MARGIN + 90),
+        subtitle, fill=TEXT_GREY, font=f_sub,
+    )
 
     # Линия
     draw.line([(MARGIN, 230), (CARD_W - MARGIN, 230)], fill=TEXT_BLACK, width=4)
@@ -128,14 +131,22 @@ def build_dna_card(
     y = 280
     draw.text((MARGIN, y), "ДОМИНИРУЮЩИЙ СТИЛЬ", fill=TEXT_GREY, font=f_sub)
 
-    style_ru = {"casual": "CASUAL", "business": "BUSINESS", "sport": "SPORT"}.get(dominant_style.lower(), dominant_style.upper())
+    style_ru = {
+        "casual": "CASUAL", "business": "BUSINESS", "sport": "SPORT",
+    }.get(dominant_style.lower(), dominant_style.upper())
     draw.text((MARGIN, y + 40), style_ru, fill=TEXT_BLACK, font=f_title)
 
     # Количество вещей (справа)
     items_str = str(total_items)
     bbox = draw.textbbox((0, 0), items_str, font=f_large)
-    draw.text((CARD_W - MARGIN - (bbox[2]-bbox[0]), y + 20), items_str, fill=ACCENT_RED, font=f_large)
-    draw.text((CARD_W - MARGIN - (bbox[2]-bbox[0]), y), "ВЕЩЕЙ В БАЗЕ", fill=TEXT_GREY, font=f_sub)
+    draw.text(
+        (CARD_W - MARGIN - (bbox[2] - bbox[0]), y + 20),
+        items_str, fill=ACCENT_RED, font=f_large,
+    )
+    draw.text(
+        (CARD_W - MARGIN - (bbox[2] - bbox[0]), y),
+        "ВЕЩЕЙ В БАЗЕ", fill=TEXT_GREY, font=f_sub,
+    )
 
     draw.line([(MARGIN, 460), (CARD_W - MARGIN, 460)], fill=TEXT_GREY, width=1)
 
@@ -153,11 +164,17 @@ def build_dna_card(
     for color_name, _ in top_colors[:4]:
         rgb = _get_rgb(color_name)
         # Сама плашка
-        draw.rounded_rectangle([(x, y), (x + pill_w, y + pill_h)], radius=40, fill=rgb, outline=TEXT_GREY, width=2)
+        draw.rounded_rectangle(
+            [(x, y), (x + pill_w, y + pill_h)],
+            radius=40, fill=rgb, outline=TEXT_GREY, width=2,
+        )
         # Подпись под плашкой
         c_text = color_name.capitalize()
         bbox = draw.textbbox((0, 0), c_text, font=f_text)
-        draw.text((x + (pill_w - (bbox[2]-bbox[0]))//2, y + pill_h + 10), c_text, fill=TEXT_BLACK, font=f_text)
+        draw.text(
+            (x + (pill_w - (bbox[2] - bbox[0])) // 2, y + pill_h + 10),
+            c_text, fill=TEXT_BLACK, font=f_text,
+        )
         x += pill_w + gap
 
     y += pill_h + 60
@@ -179,7 +196,11 @@ def build_dna_card(
             y = _draw_text_wrapped(draw, bullet_text, f_text, TEXT_BLACK, CARD_W - MARGIN*2, y)
             y += 10
     else:
-        draw.text((MARGIN, y), "— Идеальный гардероб, докупать нечего!", fill=TEXT_BLACK, font=f_text)
+        draw.text(
+            (MARGIN, y),
+            "— Идеальный гардероб, докупать нечего!",
+            fill=TEXT_BLACK, font=f_text,
+        )
 
     # ================= ФУТЕР (CTA) =================
     # Прижимаем к низу

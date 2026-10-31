@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -71,7 +72,7 @@ async def check_old_laundry(bot):
         week_ago = datetime.now(ZoneInfo("Europe/Moscow")) - timedelta(days=7)
         result = await session.execute(
             select(WardrobeItem).where(
-                WardrobeItem.is_in_laundry == True,
+                WardrobeItem.is_in_laundry,
                 WardrobeItem.laundry_start_date <= week_ago,
             )
         )
@@ -89,10 +90,8 @@ async def check_old_laundry(bot):
                 + "\n".join([f"• {t.capitalize()}" for t in types])
                 + "\n\nПора их достать и вернуть в гардероб!"
             )
-            try:
+            with contextlib.suppress(Exception):
                 await bot.send_message(user_id, text)
-            except Exception:
-                pass
 
 
 async def main() -> None:

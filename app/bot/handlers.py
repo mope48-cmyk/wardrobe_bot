@@ -2,10 +2,8 @@
 
 import asyncio
 import logging
-from pathlib import Path
 
 from aiogram import Router
-from aiogram.utils.chat_action import ChatActionSender
 from aiogram.types import (
     BufferedInputFile,
     CallbackQuery,
@@ -17,6 +15,7 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
 )
+from aiogram.utils.chat_action import ChatActionSender
 from langchain_core.messages import HumanMessage
 
 from app.graph.builder import build_graph
@@ -29,6 +28,9 @@ graph = build_graph()
 
 # Блокировка для предотвращения гонки данных
 user_locks: dict[int, asyncio.Lock] = {}
+
+# Фоновые задачи (fire-and-forget), чтобы не терять ссылки для GC
+_bg_tasks: set[asyncio.Task] = set()
 
 
 def _thread_config(chat_id: int) -> dict:
@@ -137,8 +139,8 @@ async def _try_send_vogue_collage(
     False — что-то пошло не так, пусть сработает fallback на media_group.
     """
     try:
-        from app.services.vogue_cover import build_collage
         from app.services.telegram_files import download_photo_by_file_id
+        from app.services.vogue_cover import build_collage
 
         file_ids = vogue_cfg.get("photo_file_ids") or []
         labels = vogue_cfg.get("labels") or []
@@ -236,9 +238,8 @@ async def _send_ai_message(message: Message, ai_msg) -> None:
 
     # 1a. Vogue-коллаж или Капсульный коллаж
     vogue_cfg = extra.get("vogue_collage") or extra.get("capsule_collage")
-    if vogue_cfg:
-        if await _try_send_vogue_collage(message, ai_msg, vogue_cfg, inline_markup):
-            return
+    if vogue_cfg and await _try_send_vogue_collage(message, ai_msg, vogue_cfg, inline_markup):
+        return
         # Если не удалось — падаем ниже на media_group
 
     # 1b. Media group — только новое сообщение, без правки
@@ -359,7 +360,7 @@ async def _process_next_album_item(message: Message, state: dict) -> None:
 
 
 @router.message()
-async def handle_message(message: Message, album: list[Message] = None) -> None:
+async def handle_message(message: Message, album: list[Message] | None = None) -> None:
     """Единый обработчик всех сообщений.
 
     Параметр album приходит из AlbumMiddleware (если зарегистрирован),
@@ -519,12 +520,15 @@ async def handle_callback(callback: CallbackQuery) -> None:
             extra = getattr(ai_msg, "additional_kwargs", None) or {}
             cfg = extra.get("start_product_photo")
             if cfg:
-                asyncio.create_task(generate_product_photo_bg(
+                _bg_task = asyncio.create_task(generate_product_photo_bg(
                     bot=callback.bot,
                     chat_id=callback.message.chat.id,
                     card_message_id=callback.message.message_id,
                     **cfg,
                 ))
+                # Храним ссылку, чтобы задача не собралась сборщиком мусора
+                _bg_tasks.add(_bg_task)
+                _bg_task.add_done_callback(_bg_tasks.discard)
 
         # Если вещь сохранена и есть очередь — запускаем следующую
         if result.get("step") is None and result.get("album_queue"):

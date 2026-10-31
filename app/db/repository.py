@@ -2,8 +2,8 @@
 
 import json
 import logging
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Sequence
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, or_, select, update
@@ -121,6 +121,7 @@ async def update_item_field(
         "generated_photo_file_id", "accessory_occasions",  # <-- ДОБАВИТЬ
         "is_in_laundry", "laundry_start_date",  # <-- Стирка
         "thickness", "has_hood",  # <-- ДОБАВИТЬ ЭТИ ДВА
+        "use_white_overlay",  # <-- Выбор фона
     }
     if field not in allowed:
         logger.warning("Попытка обновить запрещённое поле: %s", field)
@@ -219,7 +220,7 @@ async def get_users_for_morning_push(
     async with SessionLocal() as session:
         result = await session.execute(
             select(UserMorningSettings).where(
-                UserMorningSettings.enabled == True,
+                UserMorningSettings.enabled,
                 UserMorningSettings.time_str == current_time,
                 # ИСПРАВЛЕНИЕ: Берем, если дата не сегодня ИЛИ если она вообще не задана (NULL)
                 or_(

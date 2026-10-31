@@ -2,8 +2,8 @@
 
 import json
 import logging
-from html import escape as esc
 from datetime import datetime
+from html import escape as esc
 
 from langchain_core.messages import AIMessage
 
@@ -17,7 +17,7 @@ from app.db.repository import (
 )
 from app.graph.state import BotState
 from app.services.llm_stylist import generate_vasiliev_comment
-from app.services.outfit import select_outfit, OutfitResult, _is_dress
+from app.services.outfit import _is_dress, select_outfit
 from app.services.product_photo_bg import (
     is_generating,
     mark_generating,
@@ -179,7 +179,8 @@ async def _persist_item(state: BotState, draft: dict) -> dict:
                 f"{base_success}"
                 f"🎉 <b>Браво! У вас 5 вещей!</b>\n\n"
                 f"Теперь мой стилевой профиль готов. Зайдите в меню «✨ Extra» -> «🧬 Мой стиль», "
-                f"чтобы получить вашу первую ДНК-карточку. Или нажмите «🌤 Подобрать образ», чтобы я собрал вам ансамбль!"
+                f"чтобы получить вашу первую ДНК-карточку. Или нажмите "
+                f"«🌤 Подобрать образ», чтобы я собрал вам ансамбль!"
             )
         else:
             final_text = base_success + "Что-нибудь ещё? Выберите действие в меню."
@@ -236,9 +237,11 @@ WELCOME_TEXT = (
     "Просто пришлите мне фотографию вашей вещи — я мгновенно распознаю её, "
     "определю цвет, материал и слой, и бережно помещу в ваш цифровой гардероб.\n\n"
     "<b>👕 Мой гардероб</b>\n"
-    "Ваши сокровища. Листая карточки, вы сможете редактировать детали или создать идеальное фото для каталога.\n\n"
+    "Ваши сокровища. Листая карточки, вы сможете редактировать детали "
+    "или создать идеальное фото для каталога.\n\n"
     "<b>✨ Extra</b>\n"
-    "Нажмите эту кнопку, чтобы открыть меню моих высших достижений: подбор образа по погоде, стилевой ДНК-тест, "
+    "Нажмите эту кнопку, чтобы открыть меню моих высших достижений: "
+    "подбор образа по погоде, стилевой ДНК-тест, "
     "беспощадный приговор вашему образу и настройка утренней сводки!\n\n"
     "<b>❓ Справка (/info)</b>\n"
     "Если вы забыли, как управлять этим великолепием, я всегда готов напомнить.\n\n"
@@ -258,9 +261,11 @@ HELP_TEXT = (
     "— <b>Подобрать образ</b>: я лично подберу вам ансамбль по погоде и соберу Vogue-обложку.\n"
     "— <b>Мой стиль</b>: я проанализирую ваш гардероб и выдам вашу стилевую ДНК-карточку.\n"
     "— <b>Приговор</b>: пришлите мне фото в полный рост, и я вынесу беспощадный вердикт.\n"
-    "— <b>Утренняя сводка</b>: настройте время, город и повод, и я буду присылать вам готовый образ каждое утро!\n\n"
+    "— <b>Утренняя сводка</b>: настройте время, город и повод, "
+    "и я буду присылать вам готовый образ каждое утро!\n\n"
     "<b>📸 Пополнение коллекции</b>\n"
-    "Просто отправьте мне фотографию вашей вещи. Я мгновенно распознаю её и помещу в ваш гардероб.\n\n"
+    "Просто отправьте мне фотографию вашей вещи. Я мгновенно распознаю её "
+    "и помещу в ваш гардероб.\n\n"
     "<b>❌ Отмена (/cancel)</b>\n"
     "Сбросит любые незавершенные действия и вернет вас в главное меню.\n\n"
     "Творите моду, дорогие мои!"
@@ -310,7 +315,7 @@ async def _get_onboarding_state(user_id: int) -> tuple[str, bool]:
 
 async def start_node(state: BotState) -> dict:
     logger.info("start_node: user_id=%s", state.get("user_id"))
-    text, is_ready = await _get_onboarding_state(state["user_id"])
+    text, _is_ready = await _get_onboarding_state(state["user_id"])
 
     return {
         "messages": [
@@ -359,7 +364,10 @@ async def cancel_node(state: BotState) -> dict:
     return {
         "messages": [
             AIMessage(
-                content="Великолепно! Всё отменено, как неудачный показ в Милане. Что мы будем делать дальше, мои дорогие?",
+                content=(
+                    "Великолепно! Всё отменено, как неудачный показ в Милане. "
+                    "Что мы будем делать дальше, мои дорогие?"
+                ),
                 additional_kwargs=_kb(MENU_KEYBOARD),
             )
         ],
@@ -383,7 +391,10 @@ async def fallback_node(state: BotState) -> dict:
     return {
         "messages": [
             AIMessage(
-                content="Ах, это просто катастрофа! Я вас совершенно не понимаю. Наберите /info, чтобы я напомнил вам правила хорошего тона.",
+                content=(
+                    "Ах, это просто катастрофа! Я вас совершенно не понимаю. "
+                    "Наберите /info, чтобы я напомнил вам правила хорошего тона."
+                ),
                 additional_kwargs=_kb(MENU_KEYBOARD),
             )
         ]
@@ -392,12 +403,12 @@ async def fallback_node(state: BotState) -> dict:
 
 async def dna_start_node(state: BotState) -> dict:
     """Стилевой ДНК-тест: анализ гардероба + комментарий Васильева."""
+    from app.services.llm_stylist import generate_dna_comment
     from app.services.style_dna import (
         MIN_ITEMS_FOR_DNA,
         analyze_wardrobe,
         profile_to_llm_brief,
     )
-    from app.services.llm_stylist import generate_dna_comment
 
     items = await get_items(state["user_id"])
 
@@ -1788,7 +1799,7 @@ async def list_ai_analyze_node(state: BotState) -> dict:
         # Возвращаемся к карточке, чтобы не ломать UX
         res = await _render_current(state, edit_mode="caption")
         if res.get("messages"):
-            extra = dict(res["messages"][0].additional_kwargs or {})
+            dict(res["messages"][0].additional_kwargs or {})
             # Можно было бы показать alert, но мы просто тихо вернем карточку.
             # Handlers сам разберется с текстом.
         return res
@@ -2172,17 +2183,16 @@ async def add_confirm_category_node(state: BotState) -> dict:
             return _go_to_color(draft)
 
     # 2. "да" → топ-1
-    if text in ("да", "yes", "верно", "ага", "ok", "+"):
-        if options:
-            opt = options[0]
-            draft["category"] = opt["category"]
-            draft["type"] = opt["type"]
-            draft["warmth_level"] = opt["warmth_level"]
-            draft["waterproof"] = opt["waterproof"]
-            draft["formal_level"] = opt["formal_level"]
-            draft["season"] = opt["season"]
-            draft["predicted_layer"] = opt.get("layer", "base")
-            return _go_to_color(draft)
+    if text in ("да", "yes", "верно", "ага", "ok", "+") and options:
+        opt = options[0]
+        draft["category"] = opt["category"]
+        draft["type"] = opt["type"]
+        draft["warmth_level"] = opt["warmth_level"]
+        draft["waterproof"] = opt["waterproof"]
+        draft["formal_level"] = opt["formal_level"]
+        draft["season"] = opt["season"]
+        draft["predicted_layer"] = opt.get("layer", "base")
+        return _go_to_color(draft)
 
     # 3. "другое" / "нет" → ручной путь
     if text in ("другое", "нет", "no", "неверно", "-"):
@@ -2309,7 +2319,7 @@ async def add_color_node(state: BotState) -> dict:
         }
 
     # Пользователь сразу ввёл цвета через запятую
-    valid, value, error = _validate_answer("awaiting_color", text)
+    valid, value, _error = _validate_answer("awaiting_color", text)
     if valid:
         draft["colors"] = value
         return await _maybe_ask_layer(state, draft)
@@ -2751,10 +2761,7 @@ async def outfit_occasion_node(state: BotState) -> dict:
     if not city_display:
         lat = loc.get("lat")
         lon = loc.get("lon")
-        if lat is not None and lon is not None:
-            city_display = f"{lat:.4f}, {lon:.4f}"
-        else:
-            city_display = ""
+        city_display = f"{lat:.4f}, {lon:.4f}" if lat is not None and lon is not None else ""
 
     # Формируем заголовок
     city_str = f" ({loc['city']})" if loc.get("city") else ""
@@ -3278,17 +3285,17 @@ async def laundry_text_node(state: BotState) -> dict:
         color_match = any(c.lower() in text for c in colors)
 
         # Логика: тип ИЛИ (тип не указан, но есть цвет) ИЛИ (совпало и то и другое)
-        if type_match or (
+        should_match = type_match or (
             color_match
             and not any(
                 i.type.lower() in text
                 for i in items
                 if i.type.lower() != item.type.lower()
             )
-        ):
-            # Исключаем дубликаты
-            if item not in matched:
-                matched.append(item)
+        )
+        # Исключаем дубликаты
+        if should_match and item not in matched:
+            matched.append(item)
 
     if not matched:
         return {

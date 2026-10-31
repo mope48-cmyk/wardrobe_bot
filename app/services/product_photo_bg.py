@@ -78,7 +78,7 @@ async def _chat_action_loop(
             logger.exception("send_chat_action failed")
         try:
             await asyncio.wait_for(stop.wait(), timeout=4.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             continue
 
 

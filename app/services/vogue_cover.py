@@ -52,7 +52,7 @@ def _grid_layout(n: int) -> tuple[int, int]:
 def _try_load_font(path: str, size: int):
     try:
         return ImageFont.truetype(path, size)
-    except (OSError, IOError):
+    except OSError:
         logger.warning("Шрифт %s не найден, fallback на default", path)
         try:
             return ImageFont.load_default(size=size)  # Pillow 11+

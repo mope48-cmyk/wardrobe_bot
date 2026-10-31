@@ -148,12 +148,16 @@ def profile_to_llm_brief(profile: StyleProfile) -> str:
     """Сериализовать профиль в компактный текст для промпта LLM."""
     lines = [
         f"Всего вещей: {profile.total_items}",
-        f"Доминирующий стиль: {profile.dominant_style} "
-        f"(casual: {profile.style_distribution.get('casual', 0)}, "
-        f"business: {profile.style_distribution.get('business', 0)}, "
-        f"sport: {profile.style_distribution.get('sport', 0)})",
-        f"Доля нейтральных вещей: {profile.neutral_pct:.0%}, "
-        f"акцентных: {profile.accent_pct:.0%}",
+        (
+            f"Доминирующий стиль: {profile.dominant_style} "
+            f"(casual: {profile.style_distribution.get('casual', 0)}, "
+            f"business: {profile.style_distribution.get('business', 0)}, "
+            f"sport: {profile.style_distribution.get('sport', 0)})"
+        ),
+        (
+            f"Доля нейтральных вещей: {profile.neutral_pct:.0%}, "
+            f"акцентных: {profile.accent_pct:.0%}"
+        ),
     ]
 
     if profile.top_colors:

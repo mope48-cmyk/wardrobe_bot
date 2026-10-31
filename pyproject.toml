@@ -1,0 +1,21 @@
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["venv", "data",
+                  "tests/autotest_botapi.py", "tests/autotest_browser.py",
+                  "tests/autotest_scenario.py", "tests/check_links.py",
+                  "tests/download_images.py", "tests/upload_to_library.py",
+                  "tests/test_speed.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "PL", "RUF", "ISC", "ASYNC"]
+# Сознательно отключено:
+# - ASYNC230/240: `open()`/os.path в async-функциях — нужен aiofiles (отд. инфраструктура)
+# - RUF001/002/003: non-ASCII в строках/докстрингах/комментариях — проект русскоязычный
+# - PLR2004: magic-числа в сравнениях — шум для алгоритмов с порогами
+# - E701: многосоставные `if x: return` — принятый стиль проекта
+# - PLC0415: локальные импорты внутри функций — намеренно (ленивость, память)
+# - PLR091x/PLW0603: сложностные рефакторинг-рекомендации (не ошибки)
+ignore = ["ASYNC230", "ASYNC240", "RUF001", "RUF002", "RUF003", "PLR2004",
+          "E701", "PLC0415", "PLR0912", "PLR0913", "PLR0915", "PLR0917",
+          "PLR0911", "PLW0603"]

@@ -1,7 +1,8 @@
 """Middleware для перехвата альбомов (медиагрупп) в Telegram."""
 
 import asyncio
-from typing import Any, Awaitable, Callable, Dict
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from aiogram import BaseMiddleware
 from aiogram.types import Message
@@ -9,15 +10,17 @@ from aiogram.types import Message
 
 class AlbumMiddleware(BaseMiddleware):
     """Собирает фото из альбома в один список."""
-    
+
     latency = 0.5  # Ждем полсекунды, чтобы собрать все фото альбома
-    album_data: dict[str, list[Message]] = {}
+
+    def __init__(self) -> None:
+        self.album_data: dict[str, list[Message]] = {}
 
     async def __call__(
         self,
-        handler: Callable[[Message, Dict[str, Any]], Awaitable[Any]],
+        handler: Callable[[Message, dict[str, Any]], Awaitable[Any]],
         event: Message,
-        data: Dict[str, Any]
+        data: dict[str, Any]
     ) -> Any:
         # Если это не альбом — просто пропускаем дальше
         if not event.media_group_id:

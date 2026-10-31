@@ -124,11 +124,7 @@ def _is_bad_cutout(cutout: Image.Image) -> bool:
         alpha.getpixel((0, 0)), alpha.getpixel((w - 1, 0)),
         alpha.getpixel((0, h - 1)), alpha.getpixel((w - 1, h - 1)),
     ]
-    if any(c > 10 for c in corners):
-        return True
-
-    return False
-
+    return bool(any(c > 10 for c in corners))
 
 def _blend_white(image: Image.Image, alpha: float = 0.65) -> bytes:
     """Белый слой поверх оригинала (принудительный фон)."""

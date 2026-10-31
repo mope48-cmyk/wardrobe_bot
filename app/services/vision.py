@@ -405,7 +405,7 @@ def detect_color(
     if mask_resized is not None:
         flat_mask = mask_resized.flatten()
         n = min(len(pixels), len(flat_mask))
-        pixels = [p for p, m in zip(pixels[:n], flat_mask[:n]) if m]
+        pixels = [p for p, m in zip(pixels[:n], flat_mask[:n], strict=False) if m]
         if len(pixels) < 100:
             pixels = list(img.getdata())
             mask_resized = None
@@ -534,7 +534,7 @@ def _classify_type_siglip(image: Image.Image, image_bytes: bytes) -> list[dict]:
 
     results = [
         {"label": label, "score": float(prob)}
-        for label, prob in zip(ENGLISH_LABELS, probs.tolist())
+        for label, prob in zip(ENGLISH_LABELS, probs.tolist(), strict=False)
     ]
     results.sort(key=lambda x: x["score"], reverse=True)
 

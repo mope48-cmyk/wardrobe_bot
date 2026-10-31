@@ -72,7 +72,7 @@ def generate_capsule(
     # Лимиты (чтобы не набрать 15 футболок и 0 штанов)
     limits = {"верх": 5, "низ": 3, "обувь": 2, "аксессуар": 2}
 
-    for item, score in scored_items:
+    for item, _ in scored_items:
         if len(capsule) >= 15:
             break
         if cat_counts[item.category] < limits.get(item.category, 3):

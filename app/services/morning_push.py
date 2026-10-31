@@ -7,11 +7,11 @@ from aiogram import Bot
 from aiogram.types import BufferedInputFile
 
 from app.db.repository import get_items, update_morning_settings
-from app.services.weather import get_weather
-from app.services.outfit import select_outfit
 from app.services.llm_stylist import generate_vasiliev_comment
-from app.services.vogue_cover import build_collage
+from app.services.outfit import select_outfit
 from app.services.telegram_files import download_photo_by_file_id
+from app.services.vogue_cover import build_collage
+from app.services.weather import get_weather
 
 logger = logging.getLogger(__name__)
 

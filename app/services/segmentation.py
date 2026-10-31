@@ -91,17 +91,17 @@ def _largest_component_bbox(mask: np.ndarray) -> tuple[int, int, int, int] | Non
             while queue:
                 y, x = queue.popleft()
                 size += 1
-                if y < y_min: y_min = y
-                if y > y_max: y_max = y
-                if x < x_min: x_min = x
-                if x > x_max: x_max = x
+                y_min = min(y_min, y)
+                y_max = max(y_max, y)
+                x_min = min(x_min, x)
+                x_max = max(x_max, x)
 
                 for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1)):
                     ny, nx = y + dy, x + dx
-                    if 0 <= ny < h and 0 <= nx < w:
-                        if dilated[ny, nx] and not visited[ny, nx]:
-                            visited[ny, nx] = True
-                            queue.append((ny, nx))
+                    if (0 <= ny < h and 0 <= nx < w
+                            and dilated[ny, nx] and not visited[ny, nx]):
+                        visited[ny, nx] = True
+                        queue.append((ny, nx))
 
             if size > best_size:
                 best_size = size
