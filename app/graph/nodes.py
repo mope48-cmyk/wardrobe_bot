@@ -157,6 +157,8 @@ async def _persist_item(state: BotState, draft: dict) -> dict:
             "step": None, "draft_item": None, "intent": None,
         }
 
+    gam_note = await _apply_gam_event(state, "item_added")
+
     waterproof_str = "да" if draft.get("waterproof", False) else "нет"
     base_success = (
         f"Готово! Сохранил вещь:\n"
@@ -188,13 +190,14 @@ async def _persist_item(state: BotState, draft: dict) -> dict:
         # Если вещей все еще меньше 5
         final_text = f"{base_success}{onboarding_text}"
 
+    messages = [
+        AIMessage(content=final_text, additional_kwargs=_kb(MENU_KEYBOARD))
+    ]
+    if gam_note:
+        messages.append(AIMessage(content=gam_note))
+
     return {
-        "messages": [
-            AIMessage(
-                content=final_text,
-                additional_kwargs=_kb(MENU_KEYBOARD),
-            )
-        ],
+        "messages": messages,
         "step": None, "draft_item": None, "intent": None,
         "album_queue": state.get("album_queue"),
     }
@@ -349,6 +352,9 @@ async def more_services_node(state: BotState) -> dict:
         ],
         [
             {"text": "☀️ Утренняя сводка", "callback_data": "menu:morning"}
+        ],
+        [
+            {"text": "📊 Мой прогресс", "callback_data": "menu:progress"}
         ]
     ]
     return {
@@ -635,6 +641,10 @@ async def verdict_photo_node(state: BotState) -> dict:
         ]
         # Сохраняем клавиатуру с меню + добавляем кнопку шаринга
         messages[-1].additional_kwargs = extra
+
+    reward = await _gam_reward_message(state, "verdict_done")
+    if reward:
+        messages.append(reward)
 
     return {
         "messages": messages,
@@ -2862,6 +2872,10 @@ async def outfit_occasion_node(state: BotState) -> dict:
         )
     )
 
+    reward = await _gam_reward_message(state, "outfit_created")
+    if reward:
+        messages.append(reward)
+
     return {
         "messages": messages,
         "step": None, "intent": None, "location": None,
@@ -3213,6 +3227,9 @@ async def list_toggle_laundry_node(state: BotState) -> dict:
         item_id=item.id, user_id=user_id, field="laundry_start_date", value=start_date
     )
 
+    if new_status:
+        await _apply_gam_event(state, "laundry_done")
+
     return await _render_current(state, edit_mode="caption")
 
 
@@ -3237,7 +3254,6 @@ async def list_toggle_overlay_node(state: BotState) -> dict:
     # Если уже генерируется — просто перерисовываем карточку
     if is_generating(item.id):
         return await _render_current(state, edit_mode="caption")
-
     mark_generating(item.id)
 
     result = await _render_current(state, edit_mode="caption")
@@ -3488,6 +3504,10 @@ async def capsule_node(state: BotState) -> dict:
         "date_str": datetime.now().strftime("%d.%m.%Y"),
     }
 
+    reward = await _gam_reward_message(state, "capsule_built")
+    if reward:
+        text = f"{text}\n\n{reward.content}"
+
     return {
         "messages": [
             AIMessage(
@@ -3501,7 +3521,6 @@ async def capsule_node(state: BotState) -> dict:
         "step": "capsule_view",
         "capsule_ids": capsule_ids,
     }
-
 
 async def capsule_like_node(state: BotState) -> dict:
     return {
@@ -3575,3 +3594,125 @@ async def capsule_remove_node(state: BotState) -> dict:
         0, AIMessage(content="Понял! Исключил вещь. Вот обновленная капсула:")
     )
     return res
+
+
+# ============================================================
+# 📊 Геймификация
+# ============================================================
+
+
+async def _apply_gam_event(state: BotState, event: str) -> str:
+    """Выполнить событие геймификации, вернуть короткую реплику-награду."""
+    from app.services.gamification import (
+        ACHIEVEMENTS,
+        level_name,
+        record_event,
+    )
+
+    try:
+        upd = await record_event(state["user_id"], event)
+    except Exception:
+        logger.exception("Ошибка геймификации (event=%s)", event)
+        return ""
+
+    parts = []
+    if upd.leveled_up:
+        parts.append(f"🎉 Новый уровень: <b>{level_name(upd.new_level)}</b>!")
+    for code in upd.new_achievements:
+        a = ACHIEVEMENTS.get(code)
+        if a:
+            parts.append(f"{a['emoji']} Достижение: <b>{a['title']}</b> — {a['desc']}")
+    if upd.challenge_completed:
+        parts.append("🗓 Вызов недели выполнен! +50 XP")
+    return "\n".join(parts)
+
+
+async def _gam_reward_message(state: BotState, event: str) -> AIMessage | None:
+    note = await _apply_gam_event(state, event)
+    if not note:
+        return None
+    return AIMessage(content=note)
+
+
+async def progress_node(state: BotState) -> dict:
+    """Карточка «Мой прогресс»: уровень, серия, статистика, ачивки, вызов."""
+    from app.services.gamification import (
+        ACHIEVEMENTS,
+        CHALLENGES,
+        get_or_create_gam,
+        level_from_xp,
+        level_name,
+        xp_for_level,
+    )
+
+    user_id = state["user_id"]
+    gam = await get_or_create_gam(user_id)
+
+    xp = gam.xp or 0
+    level = level_from_xp(xp)
+    name = level_name(level)
+    need_current = xp_for_level(level)
+    need_next = xp_for_level(level + 1)
+    step = max(1, need_next - need_current)
+    pct = min(1.0, (xp - need_current) / step)
+    bar_len = 10
+    filled = round(pct * bar_len)
+    bar = "█" * filled + "░" * (bar_len - filled)
+
+    streak = gam.streak or 0
+    streak_line = (
+        f"🔥 Серия: <b>{streak}</b> дн." if streak else "🔥 Серия: стартует с первого действия"
+    )
+    lines = [
+        "🧬 <b>Мой прогресс</b>\n",
+        f"Уровень: <b>{level}</b> — {name}",
+        f"Опыт: {xp} XP  [{bar}] {need_next - xp} до след. уровня\n",
+        streak_line,
+    ]
+
+    # Статистика
+    lines.append("\n📊 <b>Статистика</b>:")
+    stats = [
+        ("Вещей добавлено", gam.items_added or 0),
+        ("Образов собрано", gam.outfits_created or 0),
+        ("Приговоров вынесено", gam.verdicts_done or 0),
+        ("Капсул создано", gam.capsules_built or 0),
+        ("Отправок в стирку", gam.laundry_done or 0),
+    ]
+    for label, value in stats:
+        lines.append(f"• {label}: {value}")
+
+    # Недельный вызов
+    lines.append("\n🗓 <b>Вызов недели</b>:")
+    ch = None
+    if gam.weekly_challenge:
+        for c in CHALLENGES:
+            if c["type"] == gam.weekly_challenge:
+                ch = c
+                break
+    if ch:
+        progress = min(gam.challenge_progress or 0, gam.challenge_target or 1)
+        lines.append(
+            f"• {ch['title']} — {progress}/{ch['target']}"
+        )
+    else:
+        lines.append("• Назначится автоматически на этой неделе")
+
+    # Достижения
+    unlocked = set(json.loads(gam.achievements or "[]"))
+    lines.append(f"\n🏆 <b>Достижения</b> ({len(unlocked)}/{len(ACHIEVEMENTS)}):")
+    if unlocked:
+        lines.append("  " + " ".join(f"{ACHIEVEMENTS[c]['emoji']}" for c in sorted(unlocked)))
+    remaining = [c for c in ACHIEVEMENTS if c not in unlocked]
+    if remaining:
+        hint = ", ".join(ACHIEVEMENTS[c]["title"] for c in remaining[:4])
+        lines.append(f"<i>Ещё можно получить: {hint}</i>")
+
+    text = "\n".join(lines)
+    return {
+        "messages": [
+            AIMessage(content=text, additional_kwargs=_kb(MENU_KEYBOARD))
+        ],
+        "step": None,
+        "intent": None,
+    }

@@ -117,3 +117,34 @@ class UserPreferences(Base):
     user_id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     # Будем хранить список ID вещей, которые юзер исключил (в формате JSON)
     disliked_items: Mapped[str] = mapped_column(String, default="[]")
+
+
+class UserGamification(Base):
+    """Прогресс геймификации: XP, уровни, серия дней, достижения, вызов недели."""
+
+    __tablename__ = "user_gamification"
+
+    user_id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+
+    # Очки опыта и текущая серия дней
+    xp: Mapped[int] = mapped_column(Integer, default=0)
+    streak: Mapped[int] = mapped_column(Integer, default=0)
+    last_active_date: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )  # YYYY-MM-DD
+
+    # Недельный вызов: тип, прогресс, цель и номер недели (ISO), на которую назначен
+    weekly_challenge: Mapped[str | None] = mapped_column(String, nullable=True)
+    challenge_progress: Mapped[int] = mapped_column(Integer, default=0)
+    challenge_target: Mapped[int] = mapped_column(Integer, default=0)
+    challenge_week: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Достижения (коды) в формате JSON
+    achievements: Mapped[str] = mapped_column(Text, default="[]")
+
+    # Счётчики событий (для ачивок и статистики)
+    items_added: Mapped[int] = mapped_column(Integer, default=0)
+    outfits_created: Mapped[int] = mapped_column(Integer, default=0)
+    verdicts_done: Mapped[int] = mapped_column(Integer, default=0)
+    capsules_built: Mapped[int] = mapped_column(Integer, default=0)
+    laundry_done: Mapped[int] = mapped_column(Integer, default=0)

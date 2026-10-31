@@ -82,6 +82,7 @@ async def db():
         await conn.execute(text("DELETE FROM wardrobe_items"))
         await conn.execute(text("DELETE FROM user_morning_settings"))
         await conn.execute(text("DELETE FROM user_preferences"))
+        await conn.execute(text("DELETE FROM user_gamification"))
         await conn.commit()
 
 

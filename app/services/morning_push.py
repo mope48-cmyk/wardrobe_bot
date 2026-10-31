@@ -51,12 +51,18 @@ async def send_morning_push(bot: Bot, chat_id: int, settings) -> None:
     if not comment:
         comment = "Браво! Этот образ — отличный выбор на сегодня."
 
+    from app.services.gamification import get_or_create_gam
+    gam = await get_or_create_gam(chat_id)
+    streak = gam.streak or 0
+
     caption = (
         f"☀️ <b>Доброе утро!</b>\n\n"
         f"{weather_line}\n"
         f"<b>Повод:</b> {settings.occasion}\n\n"
         f"💬 <i>{esc(comment)}</i>"
     )
+    if streak >= 2:
+        caption += f"\n\n🔥 Серия: <b>{streak}</b> дн."
 
     photos = []
     for item in best_outfit.items:

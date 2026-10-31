@@ -127,6 +127,8 @@ def route_condition(state: BotState) -> str:
     if text == "capsule:back": return "capsule_start"
     if text == "/capsule": return "capsule_start"
     if text == "menu:capsule": return "capsule_start"
+    if text == "menu:progress": return "progress"
+    if text == "/progress": return "progress"
     if text.startswith("list:cat:"): return "list_category"
     if text == "outfit:warmer": return "outfit_variant"
     if text == "outfit:lighter": return "outfit_variant"
@@ -273,6 +275,7 @@ def build_graph():
     builder.add_node("capsule_like", nodes.capsule_like_node)
     builder.add_node("capsule_dislike_menu", nodes.capsule_dislike_menu_node)
     builder.add_node("capsule_remove", nodes.capsule_remove_node)
+    builder.add_node("progress", nodes.progress_node)
 
     # /outfit
     builder.add_node("outfit_start", nodes.outfit_start_node)
@@ -348,6 +351,7 @@ def build_graph():
             "capsule_like": "capsule_like",
             "capsule_dislike_menu": "capsule_dislike_menu",
             "capsule_remove": "capsule_remove",
+            "progress": "progress",
             "outfit_start": "outfit_start",
             "outfit_location": "outfit_location",
             "outfit_occasion": "outfit_occasion",
@@ -394,6 +398,7 @@ def build_graph():
         "list_toggle_overlay",
         "laundry_text", "laundry_callback",
         "capsule_start", "capsule_like", "capsule_dislike_menu", "capsule_remove",
+        "progress",
         "list_delete_product_photo",
         "list_edit_field", "list_edit_choice", "list_edit_save", "list_edit_cancel",
         "outfit_start", "outfit_location", "outfit_occasion", "outfit_variant",
