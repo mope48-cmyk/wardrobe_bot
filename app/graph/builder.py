@@ -106,6 +106,13 @@ def route_condition(state: BotState) -> str:
     if text == "outfit:lighter": return "outfit_variant"
     if text in ("add:ai:save", "add:ai:edit"): return "add_confirm_ai"
 
+    # Callback'и утренней сводки
+    if text == "morning:toggle": return "morning_toggle"
+    if text == "morning:time": return "morning_ask_time"
+    if text == "morning:city": return "morning_ask_city"
+    if text == "morning:occasion": return "morning_ask_occasion"
+    if text == "morning:days": return "morning_ask_days"
+
     # 1. Slash-команды
     if text.startswith("/"):
         cmd = text.split()[0].lower()
@@ -117,6 +124,7 @@ def route_condition(state: BotState) -> str:
         if cmd == "/outfit": return "outfit_start"
         if cmd == "/dna": return "dna_start"
         if cmd == "/verdict": return "verdict_start"
+        if cmd == "/morning": return "morning_settings"
 
     # 2. Кнопки главного меню
     menu_intent = _match_menu_button(text)
@@ -144,7 +152,12 @@ def route_condition(state: BotState) -> str:
         "awaiting_confirm_category",
         "awaiting_accessory_occasion",
         "list_edit_input",
-        "list_edit_choice"
+        "list_edit_choice",
+        "morning_await_time",
+        "morning_await_city",
+        "morning_await_occasion",
+        "morning_await_days",
+        "morning_menu",
     )
     if step not in active_dialogs:
         free_intent = _match_free_text_intent(text)
@@ -174,6 +187,10 @@ def route_condition(state: BotState) -> str:
         if state.get("input_photo_file_id"): return "verdict_photo"
         return "verdict_expect_photo"
     if step == "awaiting_ai_confirm": return "add_confirm_ai"
+    if step == "morning_await_time": return "morning_set_time"
+    if step == "morning_await_city": return "morning_set_city"
+    if step == "morning_await_occasion": return "morning_set_occasion"
+    if step == "morning_await_days": return "morning_days"
     if step and step.startswith("awaiting_"): return "add_attribute"
 
     return "fallback"
@@ -244,6 +261,18 @@ def build_graph():
     builder.add_node("add_material_text", nodes.add_material_text_node)
     builder.add_node("add_accessory_occasion", nodes.add_accessory_occasion_node)
 
+    # /morning
+    builder.add_node("morning_settings", nodes.morning_settings_node)
+    builder.add_node("morning_toggle", nodes.morning_toggle_node)
+    builder.add_node("morning_set_time", nodes.morning_set_time_node)
+    builder.add_node("morning_set_city", nodes.morning_set_city_node)
+    builder.add_node("morning_set_occasion", nodes.morning_set_occasion_node)
+    builder.add_node("morning_days", nodes.morning_days_node)
+    builder.add_node("morning_ask_time", nodes.morning_ask_time_node)
+    builder.add_node("morning_ask_city", nodes.morning_ask_city_node)
+    builder.add_node("morning_ask_occasion", nodes.morning_ask_occasion_node)
+    builder.add_node("morning_ask_days", nodes.morning_ask_days_node)
+
     builder.add_edge(START, "router")
     builder.add_conditional_edges(
         "router",
@@ -289,6 +318,16 @@ def build_graph():
             "add_material": "add_material",
             "add_material_text": "add_material_text",
             "add_accessory_occasion": "add_accessory_occasion",
+            "morning_settings": "morning_settings",
+            "morning_toggle": "morning_toggle",
+            "morning_set_time": "morning_set_time",
+            "morning_set_city": "morning_set_city",
+            "morning_set_occasion": "morning_set_occasion",
+            "morning_days": "morning_days",
+            "morning_ask_time": "morning_ask_time",
+            "morning_ask_city": "morning_ask_city",
+            "morning_ask_occasion": "morning_ask_occasion",
+            "morning_ask_days": "morning_ask_days",
         },
     )
 
@@ -310,6 +349,9 @@ def build_graph():
         "add_confirm_category", "add_attribute",
         "add_color", "add_color_text", "add_layer",
         "add_material", "add_material_text", "add_accessory_occasion",
+        "morning_settings", "morning_toggle",
+        "morning_set_time", "morning_set_city", "morning_set_occasion", "morning_days",
+        "morning_ask_time", "morning_ask_city", "morning_ask_occasion", "morning_ask_days",
     ]
     for name in terminal_nodes:
         builder.add_edge(name, END)

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -74,3 +74,23 @@ class WardrobeItem(Base):
             f"<WardrobeItem id={self.id} user_id={self.user_id} "
             f"category={self.category!r} type={self.type!r}>"
         )
+
+
+class UserMorningSettings(Base):
+    """Настройки утренней сводки пользователя."""
+
+    __tablename__ = "user_morning_settings"
+
+    user_id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    time_str: Mapped[str] = mapped_column(String, default="08:00")  # Формат HH:MM
+    city: Mapped[str | None] = mapped_column(String, nullable=True)
+    lat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    lon: Mapped[float | None] = mapped_column(Float, nullable=True)
+    occasion: Mapped[str] = mapped_column(String, default="прогулка")
+    days: Mapped[str] = mapped_column(
+        String, default="0,1,2,3,4,5,6"
+    )  # 0=Пн, 6=Вс
+    last_sent_date: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )  # YYYY-MM-DD для защиты от дублей

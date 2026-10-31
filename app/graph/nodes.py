@@ -2828,3 +2828,182 @@ async def outfit_variant_node(state: BotState) -> dict:
         "messages": messages,
         "outfit_index": idx,
     }
+
+
+# ============================================================
+# /morning: Утренний образ
+# ============================================================
+
+
+async def morning_settings_node(state: BotState) -> dict:
+    from app.db.repository import get_morning_settings
+
+    settings = await get_morning_settings(state["user_id"])
+
+    status = "Включена ✅" if settings.enabled else "Выключена ❌"
+    days_map = {0: "Пн", 1: "Вт", 2: "Ср", 3: "Чт", 4: "Пт", 5: "Сб", 6: "Вс"}
+    active_days = ", ".join(days_map[int(d)] for d in settings.days.split(",") if d) or "нет"
+
+    text = (
+        f"☀️ <b>Утренняя сводка</b>\n\n"
+        f"Статус: {status}\n"
+        f"Время: {settings.time_str}\n"
+        f"Город: {settings.city or 'не указан'}\n"
+        f"Повод: {settings.occasion}\n"
+        f"Дни: {active_days}\n\n"
+        f"Настройте параметры:"
+    )
+
+    kb = [
+        [{"text": "🔄 Вкл/Выкл", "callback_data": "morning:toggle"}],
+        [
+            {"text": "⏰ Время", "callback_data": "morning:time"},
+            {"text": "📍 Город", "callback_data": "morning:city"},
+        ],
+        [
+            {"text": "👔 Повод", "callback_data": "morning:occasion"},
+            {"text": "📅 Дни", "callback_data": "morning:days"},
+        ],
+        [{"text": "❌ Закрыть", "callback_data": "list:menu"}],
+    ]
+
+    return {
+        "messages": [
+            AIMessage(content=text, additional_kwargs={"inline_keyboard": kb})
+        ],
+        "step": "morning_menu",
+    }
+
+
+async def morning_toggle_node(state: BotState) -> dict:
+    from app.db.repository import get_morning_settings, update_morning_settings
+
+    settings = await get_morning_settings(state["user_id"])
+    await update_morning_settings(state["user_id"], enabled=not settings.enabled)
+    return await morning_settings_node(state)
+
+
+async def morning_set_time_node(state: BotState) -> dict:
+    import re
+
+    text = (state.get("input_text") or "").strip()
+    if not re.match(r"^\d{2}:\d{2}$", text):
+        return {
+            "messages": [
+                AIMessage(
+                    content="Неверный формат. Введите в формате ЧЧ:ММ (например, 08:00)."
+                )
+            ]
+        }
+
+    from app.db.repository import update_morning_settings
+
+    await update_morning_settings(state["user_id"], time_str=text, enabled=True)
+    return await morning_settings_node(state)
+
+
+async def morning_set_city_node(state: BotState) -> dict:
+    text = (state.get("input_text") or "").strip()
+    if not text:
+        return {"messages": [AIMessage(content="Введите название города.")]}
+
+    from app.services.weather import geocode_city
+
+    geo = await geocode_city(text)
+    if not geo:
+        return {
+            "messages": [AIMessage(content="Город не найден. Попробуйте еще раз.")]
+        }
+
+    from app.db.repository import update_morning_settings
+
+    await update_morning_settings(
+        state["user_id"],
+        city=geo.get("city", text),
+        lat=geo["lat"],
+        lon=geo["lon"],
+    )
+    return await morning_settings_node(state)
+
+
+async def morning_set_occasion_node(state: BotState) -> dict:
+    text = (state.get("input_text") or "").strip().lower()
+    if text in ["работа", "прогулка", "спорт", "встреча", "другое"]:
+        from app.db.repository import update_morning_settings
+
+        await update_morning_settings(state["user_id"], occasion=text)
+        return await morning_settings_node(state)
+    return {
+        "messages": [
+            AIMessage(
+                content="Выберите из кнопок ниже.",
+                additional_kwargs=_kb(OCCASION_KEYBOARD),
+            )
+        ]
+    }
+
+
+async def morning_days_node(state: BotState) -> dict:
+    text = (state.get("input_text") or "").strip()
+    if text:
+        try:
+            days = [str(int(d)) for d in text.split(",") if 0 <= int(d) <= 6]
+            from app.db.repository import update_morning_settings
+
+            await update_morning_settings(state["user_id"], days=",".join(days))
+            return await morning_settings_node(state)
+        except Exception:
+            pass
+    return {
+        "messages": [
+            AIMessage(
+                content=(
+                    "Введите дни цифрами от 0 (Пн) до 6 (Вс) через запятую. "
+                    "Например: 1,2,3,4,5"
+                )
+            )
+        ]
+    }
+
+
+# Обертки для перехода в режим ввода (текст)
+async def morning_ask_time_node(state: BotState) -> dict:
+    return {
+        "messages": [
+            AIMessage(content="Введите время в формате ЧЧ:ММ (например, 08:00):")
+        ],
+        "step": "morning_await_time",
+    }
+
+
+async def morning_ask_city_node(state: BotState) -> dict:
+    return {
+        "messages": [AIMessage(content="Введите название города:")],
+        "step": "morning_await_city",
+    }
+
+
+async def morning_ask_occasion_node(state: BotState) -> dict:
+    return {
+        "messages": [
+            AIMessage(
+                content="Выберите повод:",
+                additional_kwargs=_kb(OCCASION_KEYBOARD),
+            )
+        ],
+        "step": "morning_await_occasion",
+    }
+
+
+async def morning_ask_days_node(state: BotState) -> dict:
+    return {
+        "messages": [
+            AIMessage(
+                content=(
+                    "Введите дни цифрами от 0 (Пн) до 6 (Вс) через запятую. "
+                    "Например: 1,2,3,4,5"
+                )
+            )
+        ],
+        "step": "morning_await_days",
+    }

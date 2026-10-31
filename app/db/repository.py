@@ -2,12 +2,13 @@
 
 import json
 import logging
+from datetime import datetime
 from typing import Sequence
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select, update
 
 from app.db.database import SessionLocal
-from app.db.models import WardrobeItem
+from app.db.models import UserMorningSettings, WardrobeItem
 
 logger = logging.getLogger(__name__)
 
@@ -174,3 +175,52 @@ async def get_all_user_ids() -> list[int]:
             select(WardrobeItem.user_id).distinct()
         )
         return [row[0] for row in result.all()]
+
+
+async def get_morning_settings(user_id: int) -> UserMorningSettings:
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(UserMorningSettings).where(UserMorningSettings.user_id == user_id)
+        )
+        settings = result.scalar_one_or_none()
+        if not settings:
+            settings = UserMorningSettings(user_id=user_id)
+            session.add(settings)
+            await session.commit()
+            await session.refresh(settings)
+        return settings
+
+
+async def update_morning_settings(user_id: int, **kwargs) -> None:
+    async with SessionLocal() as session:
+        stmt = (
+            update(UserMorningSettings)
+            .where(UserMorningSettings.user_id == user_id)
+            .values(**kwargs)
+        )
+        await session.execute(stmt)
+        await session.commit()
+
+
+async def get_users_for_morning_push(
+    current_time: str, current_day: int
+) -> list[UserMorningSettings]:
+    """Возвращает настройки пользователей, которым пора отправить сводку."""
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(UserMorningSettings).where(
+                UserMorningSettings.enabled.is_(True),
+                UserMorningSettings.time_str == current_time,
+                or_(
+                    UserMorningSettings.last_sent_date.is_(None),
+                    UserMorningSettings.last_sent_date != today_str,
+                ),
+            )
+        )
+        users = []
+        for row in result.scalars().all():
+            days_list = [int(d) for d in row.days.split(",") if d]
+            if current_day in days_list:
+                users.append(row)
+        return users

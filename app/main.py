@@ -1,5 +1,7 @@
 import asyncio
 import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -13,7 +15,9 @@ from app.bot.handlers import router
 from app.bot.middlewares import AlbumMiddleware
 from app.config import settings
 from app.db.database import init_db
+from app.db.repository import get_users_for_morning_push
 from app.services.broadcast import send_release_broadcast
+from app.services.morning_push import send_morning_push
 from app.services.vision import warmup
 
 
@@ -35,6 +39,21 @@ async def scheduled_broadcast(bot):
         await send_release_broadcast(bot, file_path="release_notes.txt")
     except Exception:
         logging.exception("Ошибка в ежедневной рассылке релиза")
+
+
+async def check_morning_pushes(bot):
+    """Каждую минуту проверяем, не пора ли отправить утреннюю сводку."""
+    # Время по Москве
+    now = datetime.now(ZoneInfo("Europe/Moscow"))
+    current_time = now.strftime("%H:%M")
+    current_day = now.weekday()  # 0=Пн, 6=Вс
+
+    try:
+        users = await get_users_for_morning_push(current_time, current_day)
+        for user in users:
+            await send_morning_push(bot, user.user_id, user)
+    except Exception:
+        logging.exception("Ошибка в фоновой задаче утренней сводки")
 
 
 async def main() -> None:
@@ -80,8 +99,18 @@ async def main() -> None:
         id="daily_release_broadcast",
         replace_existing=True
     )
+
+    # Утренняя сводка: проверка каждую минуту
+    scheduler.add_job(
+        check_morning_pushes,
+        trigger=CronTrigger(minute="*", timezone="Europe/Moscow"),
+        args=[bot],
+        id="morning_push_checker",
+        replace_existing=True,
+    )
     scheduler.start()
     logger.info("Планировщик запущен. Ежедневная рассылка в 10:00 МСК.")
+    logger.info("Утренняя сводка: проверка каждую минуту (МСК).")
 
     logger.info("Бот запускается. Нажмите Ctrl+C для остановки.")
     try:
