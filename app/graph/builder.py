@@ -73,6 +73,10 @@ def _match_free_text_intent(text: str) -> str | None:
     if any(k in lower for k in ["отмена", "отмени", "стоп", "хватит", "надоело", "отменить"]):
         return "cancel"
 
+    # Стирка
+    if any(k in lower for k in ["стирк", "постирал", "высох", "чист", "химчистк", "забрал"]):
+        return "laundry_text"
+
     # Интенты для помощи
     if any(k in lower for k in ["помощь", "справка", "умеешь", "команды", "инструкция", "помоги"]):
         return "help"
@@ -102,6 +106,8 @@ def route_condition(state: BotState) -> str:
     if text == "list:ai_analyze": return "list_ai_analyze"
     if text == "list:more_toggle": return "list_more_toggle"
     if text == "list:menu": return "list_menu"
+    if text == "list:toggle_laundry": return "list_toggle_laundry"
+    if text.startswith("laundry:set:"): return "laundry_callback"
     if text.startswith("list:cat:"): return "list_category"
     if text == "outfit:warmer": return "outfit_variant"
     if text == "outfit:lighter": return "outfit_variant"
@@ -240,6 +246,9 @@ def build_graph():
     builder.add_node("list_make_product_photo", nodes.list_make_product_photo_node)
     builder.add_node("list_ai_analyze", nodes.list_ai_analyze_node)
     builder.add_node("list_more_toggle", nodes.list_more_toggle_node)
+    builder.add_node("list_toggle_laundry", nodes.list_toggle_laundry_node)
+    builder.add_node("laundry_text", nodes.laundry_text_node)
+    builder.add_node("laundry_callback", nodes.laundry_callback_node)
 
     # /outfit
     builder.add_node("outfit_start", nodes.outfit_start_node)
@@ -307,6 +316,9 @@ def build_graph():
             "list_make_product_photo": "list_make_product_photo",
             "list_ai_analyze": "list_ai_analyze",
             "list_more_toggle": "list_more_toggle",
+            "list_toggle_laundry": "list_toggle_laundry",
+            "laundry_text": "laundry_text",
+            "laundry_callback": "laundry_callback",
             "outfit_start": "outfit_start",
             "outfit_location": "outfit_location",
             "outfit_occasion": "outfit_occasion",
@@ -349,6 +361,8 @@ def build_graph():
         "list_toggle_photo", "list_make_product_photo",
         "list_ai_analyze",
         "list_more_toggle",
+        "list_toggle_laundry",
+        "laundry_text", "laundry_callback",
         "list_delete_product_photo",
         "list_edit_field", "list_edit_choice", "list_edit_save", "list_edit_cancel",
         "outfit_start", "outfit_location", "outfit_occasion", "outfit_variant",

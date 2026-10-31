@@ -622,8 +622,12 @@ def _item_caption(item) -> str:
 
     waterproof_mark = "💧 " if item.waterproof else ""
 
+    laundry_mark = (
+        "🧺 <b>В СТИРКЕ</b>\n" if getattr(item, "is_in_laundry", False) else ""
+    )
     return (
         f"<b>{item.category} / {item.type}</b>\n"
+        f"{laundry_mark}"
         f"{attrs_str}\n"
         f"{waterproof_mark}тепло: {item.warmth_level}/5 | "
         f"стиль: {item.formal_level} | сезон: {item.season}"
@@ -652,6 +656,7 @@ def _list_keyboard(
     show_original: bool,
     is_gen_now: bool,
     show_more_menu: bool,
+    is_in_laundry: bool = False,
 ) -> list[list[dict]]:
     """Inline-клавиатура карточки вещи (динамическая)."""
     prev_cb = "list:prev" if index > 0 else "list:noop:first"
@@ -684,11 +689,15 @@ def _list_keyboard(
             {"text": "📸 Сделать фото", "callback_data": "list:make_product_photo"},
         ]
 
+    laundry_text = "✅ Вернуть в гардероб" if is_in_laundry else "🧺 Отправить в стирку"
+    row_laundry = [{"text": laundry_text, "callback_data": "list:toggle_laundry"}]
+
     return [
         [
             {"text": "✏️ Редактировать", "callback_data": "list:edit"},
             {"text": "🧠 ИИ-Анализ", "callback_data": "list:ai_analyze"},
         ],
+        row_laundry,
         row2,
         [
             {"text": "🗑 Удалить вещь", "callback_data": "list:delete"},
@@ -787,7 +796,13 @@ async def _render_current(state: BotState, edit_mode: str = "media") -> dict:
     additional: dict = {
         "photo_file_id": photo_to_show,
         "inline_keyboard": _list_keyboard(
-            index, total, has_generated, show_original, is_gen, show_more_menu
+            index,
+            total,
+            has_generated,
+            show_original,
+            is_gen,
+            show_more_menu,
+            getattr(item, "is_in_laundry", False),
         ),
         "edit_mode": edit_mode,
     }
@@ -3068,4 +3083,197 @@ async def morning_ask_days_node(state: BotState) -> dict:
             )
         ],
         "step": "morning_await_days",
+    }
+
+
+# ============================================================
+# 🧺 Стирка
+# ============================================================
+
+
+async def list_toggle_laundry_node(state: BotState) -> dict:
+    from datetime import datetime
+
+    ids = state.get("list_ids") or []
+    index = state.get("list_index") or 0
+    user_id = state["user_id"]
+
+    if not ids or index >= len(ids):
+        return {"messages": [AIMessage(content="Вещь не найдена.")]}
+
+    item = await get_item(ids[index])
+    if not item:
+        return {"messages": [AIMessage(content="Вещь не найдена.")]}
+
+    new_status = not getattr(item, "is_in_laundry", False)
+    start_date = datetime.now() if new_status else None
+
+    await update_item_field(
+        item_id=item.id, user_id=user_id, field="is_in_laundry", value=new_status
+    )
+    await update_item_field(
+        item_id=item.id, user_id=user_id, field="laundry_start_date", value=start_date
+    )
+
+    return await _render_current(state, edit_mode="caption")
+
+
+async def laundry_text_node(state: BotState) -> dict:
+    from datetime import datetime
+
+    text = (state.get("input_text") or "").strip().lower()
+    items = await get_items(state["user_id"])
+
+    # 1. Определяем, какое действие совершается
+    # (Если есть слова "высох", "постирал", "чист", "забрал" -> возвращаем в гардероб)
+    # (Если "в стирку", "в стирке", "сдал", "кинул", "грязн" -> отправляем в стирку)
+    is_clean_action = any(
+        w in text for w in ["высох", "постирал", "чист", "забрал", "готов", "вернул"]
+    )
+
+    # 2. Ищем подходящие вещи
+    matched = []
+    for item in items:
+        # Проверяем совпадение по типу (например, "футболка", "джинсы")
+        type_match = item.type.lower() in text or any(
+            w in text for w in item.type.lower().split() if len(w) > 3
+        )
+
+        # Проверяем совпадение по цвету (например, "белая")
+        colors = get_colors(item)
+        color_match = any(c.lower() in text for c in colors)
+
+        # Логика: тип ИЛИ (тип не указан, но есть цвет) ИЛИ (совпало и то и другое)
+        if type_match or (
+            color_match
+            and not any(
+                i.type.lower() in text
+                for i in items
+                if i.type.lower() != item.type.lower()
+            )
+        ):
+            # Исключаем дубликаты
+            if item not in matched:
+                matched.append(item)
+
+    if not matched:
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        "Я обыскал весь гардероб, но не нашел такую вещь. "
+                        "Попробуйте назвать точнее (например, «белая футболка»)."
+                    ),
+                    additional_kwargs=_kb(MENU_KEYBOARD),
+                )
+            ],
+            "step": None,
+        }
+
+    # 3. Если нашли ровно одну вещь — обновляем сразу
+    if len(matched) == 1:
+        item = matched[0]
+        new_status = not is_clean_action  # Если чистое -> False, если грязное -> True
+
+        # Проверяем, не меняем ли мы статус на тот, который уже есть
+        if getattr(item, "is_in_laundry", False) == new_status:
+            status_str = "уже в стирке 🧺" if new_status else "уже чистенькая ✅"
+            return {
+                "messages": [
+                    AIMessage(
+                        content=f"Вещь «{item.type}» {status_str}!",
+                        additional_kwargs=_kb(MENU_KEYBOARD),
+                    )
+                ],
+                "step": None,
+            }
+
+        await update_item_field(
+            item.id, state["user_id"], "is_in_laundry", new_status
+        )
+        await update_item_field(
+            item.id,
+            state["user_id"],
+            "laundry_start_date",
+            datetime.now() if new_status else None,
+        )
+
+        action_msg = "отправлена в стирку 🧺" if new_status else "возвращена в гардероб ✅"
+        return {
+            "messages": [
+                AIMessage(
+                    content=f"Понял! Вещь «{item.type}» {action_msg}.",
+                    additional_kwargs=_kb(MENU_KEYBOARD),
+                )
+            ],
+            "step": None,
+        }
+
+    # 4. Если нашли несколько — предлагаем выбрать
+    kb = []
+    for item in matched[:5]:  # Максимум 5 кнопок
+        # В callback_data зашиваем ID вещи и нужное действие (1 - в стирку, 0 - чистый)
+        action_code = "0" if is_clean_action else "1"
+        colors_str = ", ".join(get_colors(item))
+        btn_text = f"{item.type} ({colors_str})" if colors_str else item.type
+        kb.append(
+            [
+                {
+                    "text": btn_text.capitalize(),
+                    "callback_data": f"laundry:set:{item.id}:{action_code}",
+                }
+            ]
+        )
+
+    return {
+        "messages": [
+            AIMessage(
+                content=(
+                    "Я нашел несколько подходящих вещей. Уточните, "
+                    "какую именно вы имели в виду:"
+                ),
+                additional_kwargs={"inline_keyboard": kb},
+            )
+        ],
+        "step": "laundry_confirm",
+    }
+
+
+async def laundry_callback_node(state: BotState) -> dict:
+    from datetime import datetime
+
+    text = (state.get("input_text") or "").strip()
+    # Формат: laundry:set:123:1
+    parts = text.split(":")
+    if len(parts) != 4:
+        return {
+            "messages": [
+                AIMessage(
+                    content="Ошибка выбора.",
+                    additional_kwargs=_kb(MENU_KEYBOARD),
+                )
+            ],
+            "step": None,
+        }
+
+    item_id = int(parts[2])
+    is_dirty = bool(int(parts[3]))
+
+    await update_item_field(item_id, state["user_id"], "is_in_laundry", is_dirty)
+    await update_item_field(
+        item_id,
+        state["user_id"],
+        "laundry_start_date",
+        datetime.now() if is_dirty else None,
+    )
+
+    action_msg = "отправлена в стирку 🧺" if is_dirty else "возвращена в гардероб ✅"
+    return {
+        "messages": [
+            AIMessage(
+                content=f"Готово! Вещь {action_msg}.",
+                additional_kwargs=_kb(MENU_KEYBOARD),
+            )
+        ],
+        "step": None,
     }

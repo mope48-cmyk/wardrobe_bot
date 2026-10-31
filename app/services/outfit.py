@@ -541,6 +541,9 @@ def _select_outfit_fallback(
     items: list[WardrobeItem], weather: dict, occasion: str
 ) -> list[OutfitResult]:
     """Упрощённый алгоритм — всегда list[OutfitResult] (п.11)."""
+    # Исключаем вещи в стирке
+    items = [i for i in items if not getattr(i, "is_in_laundry", False)]
+
     if not items:
         return [OutfitResult(no_candidates=True)]
 
@@ -675,6 +678,9 @@ def select_outfit(
     items: list[WardrobeItem], weather: dict, occasion: str
 ) -> list[OutfitResult]:
     """Новый алгоритм с fallback (п.11: всегда list[OutfitResult])."""
+    # Исключаем вещи в стирке
+    items = [i for i in items if not getattr(i, "is_in_laundry", False)]
+
     if not items:
         return [OutfitResult(no_candidates=True)]
 

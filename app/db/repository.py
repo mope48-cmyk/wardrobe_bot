@@ -115,6 +115,7 @@ async def update_item_field(
         "category", "type", "colors", "material", "warmth_level",
         "waterproof", "formal_level", "season", "layer",
         "generated_photo_file_id", "accessory_occasions",  # <-- ДОБАВИТЬ
+        "is_in_laundry", "laundry_start_date",  # <-- Стирка
     }
     if field not in allowed:
         logger.warning("Попытка обновить запрещённое поле: %s", field)

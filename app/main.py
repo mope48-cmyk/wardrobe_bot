@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot, Dispatcher
@@ -10,11 +10,13 @@ from aiogram.client.telegram import TelegramAPIServer
 from aiogram.enums import ParseMode
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from sqlalchemy import select
 
 from app.bot.handlers import router
 from app.bot.middlewares import AlbumMiddleware
 from app.config import settings
-from app.db.database import init_db
+from app.db.database import SessionLocal, init_db
+from app.db.models import WardrobeItem
 from app.db.repository import get_users_for_morning_push
 from app.services.broadcast import send_release_broadcast
 from app.services.morning_push import send_morning_push
@@ -61,6 +63,36 @@ async def check_morning_pushes(bot):
             await send_morning_push(bot, user.user_id, user)
     except Exception:
         logging.exception("Ошибка в фоновой задаче утренней сводки")
+
+
+async def check_old_laundry(bot):
+    """Раз в день напоминаем про вещи, которые в стирке больше недели."""
+    async with SessionLocal() as session:
+        week_ago = datetime.now(ZoneInfo("Europe/Moscow")) - timedelta(days=7)
+        result = await session.execute(
+            select(WardrobeItem).where(
+                WardrobeItem.is_in_laundry == True,
+                WardrobeItem.laundry_start_date <= week_ago,
+            )
+        )
+        old_items = result.scalars().all()
+
+        # Группируем по user_id
+        user_items = {}
+        for item in old_items:
+            user_items.setdefault(item.user_id, []).append(item.type)
+
+        for user_id, types in user_items.items():
+            text = (
+                "🧺 <b>Напоминание о стирке!</b>\n\n"
+                "Эти вещи находятся в стирке уже больше недели:\n"
+                + "\n".join([f"• {t.capitalize()}" for t in types])
+                + "\n\nПора их достать и вернуть в гардероб!"
+            )
+            try:
+                await bot.send_message(user_id, text)
+            except Exception:
+                pass
 
 
 async def main() -> None:
@@ -113,6 +145,15 @@ async def main() -> None:
         trigger=CronTrigger(minute="*", timezone="Europe/Moscow"),
         args=[bot],
         id="morning_push_checker",
+        replace_existing=True,
+    )
+
+    # Напоминание о стирке: каждый день в 16:00 МСК
+    scheduler.add_job(
+        check_old_laundry,
+        trigger=CronTrigger(hour=16, minute=0, timezone="Europe/Moscow"),
+        args=[bot],
+        id="old_laundry_checker",
         replace_existing=True,
     )
     scheduler.start()

@@ -69,6 +69,10 @@ class WardrobeItem(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
+    # Статус стирки
+    is_in_laundry: Mapped[bool] = mapped_column(Boolean, default=False)
+    laundry_start_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     def __repr__(self) -> str:
         return (
             f"<WardrobeItem id={self.id} user_id={self.user_id} "
