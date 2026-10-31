@@ -13,6 +13,7 @@ from app.graph.state import BotState
 MENU_LABELS: dict[str, str] = {
     "добавить вещь": "add_start",
     "мой гардероб": "list",
+    "extra": "more_services",
     "подобрать образ": "outfit_start",
     "мой стиль": "dna_start",          # ← НОВОЕ
     "приговор": "verdict_start",       # ← НОВОЕ
@@ -113,6 +114,12 @@ def route_condition(state: BotState) -> str:
     if text == "morning:occasion": return "morning_ask_occasion"
     if text == "morning:days": return "morning_ask_days"
 
+    # Callback'и меню услуг
+    if text == "menu:outfit": return "outfit_start"
+    if text == "menu:dna": return "dna_start"
+    if text == "menu:verdict": return "verdict_start"
+    if text == "menu:morning": return "morning_settings"
+
     # 1. Slash-команды
     if text.startswith("/"):
         cmd = text.split()[0].lower()
@@ -206,6 +213,7 @@ def build_graph():
     builder.add_node("router", router_node)
     builder.add_node("start", nodes.start_node)
     builder.add_node("help", nodes.help_node)
+    builder.add_node("more_services", nodes.more_services_node)
     builder.add_node("cancel", nodes.cancel_node)
     builder.add_node("fallback", nodes.fallback_node)
     builder.add_node("stub", nodes.stub_node)
@@ -280,6 +288,7 @@ def build_graph():
         {
             "start": "start", "help": "help", "cancel": "cancel",
             "fallback": "fallback", "stub": "stub", "list": "list",
+            "more_services": "more_services",
             "list_menu": "list_menu",
             "list_category": "list_category",
             "list_prev": "list_prev",
@@ -333,6 +342,7 @@ def build_graph():
 
     terminal_nodes = [
         "start", "help", "cancel", "fallback", "stub", "list",
+        "more_services",
         "list_menu", "list_category",
         "list_prev", "list_next", "list_noop", "list_edit", "list_delete",
         "list_delete_do", "list_delete_cancel",
