@@ -57,6 +57,9 @@ class WardrobeItem(Base):
     # Наличие капюшона
     has_hood: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Выбор обработки фото: False = умный кроп (rembg), True = белый слой
+    use_white_overlay: Mapped[bool] = mapped_column(Boolean, default=False)
+
     # Формальность: casual / business / sport
     formal_level: Mapped[str] = mapped_column(String(32), default="casual")
 

@@ -107,7 +107,41 @@ def _rembg_mask(image_bytes: bytes) -> np.ndarray | None:
         return None
 
 
-def make_product_photo(image_bytes: bytes, category: str) -> bytes:
+def _is_bad_cutout(cutout: Image.Image) -> bool:
+    """Эвристика для проверки плохого вырезания."""
+    bbox = cutout.getbbox()
+    if not bbox:
+        return True  # Пустая картинка
+
+    # 1. Проверяем, не касается ли объект верхнего края (обычно это вешалка)
+    if bbox[1] < 10:
+        return True
+
+    # 2. Проверяем углы. Если углы непрозрачные, значит фон не убрался
+    alpha = cutout.split()[-1]
+    w, h = alpha.size
+    corners = [
+        alpha.getpixel((0, 0)), alpha.getpixel((w - 1, 0)),
+        alpha.getpixel((0, h - 1)), alpha.getpixel((w - 1, h - 1)),
+    ]
+    if any(c > 10 for c in corners):
+        return True
+
+    return False
+
+
+def _blend_white(image: Image.Image, alpha: float = 0.65) -> bytes:
+    """Белый слой поверх оригинала (принудительный фон)."""
+    white = Image.new("RGB", image.size, "white")
+    blended = Image.blend(image, white, alpha=alpha)
+    out = BytesIO()
+    blended.save(out, format="JPEG", quality=90)
+    return out.getvalue()
+
+
+def make_product_photo(
+    image_bytes: bytes, category: str, force_overlay: bool = False
+) -> bytes:
     """Сделать товарное фото: только вещь нужной категории на белом фоне.
 
     Возвращает JPEG-байты. При ошибке — исходные байты (фолбэк).
@@ -115,6 +149,11 @@ def make_product_photo(image_bytes: bytes, category: str) -> bytes:
     try:
         image = Image.open(BytesIO(image_bytes)).convert("RGB")
         w, h = image.size
+
+        # Принудительный белый слой (если пользователь выбрал вручную)
+        if force_overlay:
+            logger.info("force_overlay=True — белый слой")
+            return _blend_white(image)
 
         # 1. Маска SegFormer (по категории)
         mask_seg = _seg_mask(image, category)
@@ -134,12 +173,19 @@ def make_product_photo(image_bytes: bytes, category: str) -> bytes:
         elif mask_rembg is not None:
             final_mask = mask_rembg
         else:
-            logger.info("Ни одна маска не сработала, отдаю оригинал")
-            return image_bytes
+            logger.info("Ни одна маска не сработала — белый слой")
+            return _blend_white(image)
 
         # 4. Сглаживание краёв
         mask_img = Image.fromarray((final_mask * 255).astype(np.uint8), mode="L")
         mask_img = mask_img.filter(ImageFilter.GaussianBlur(radius=1.2))
+
+        # 4a. Проверяем качество вырезания
+        cutout_check = Image.new("RGBA", (w, h))
+        cutout_check.putalpha(mask_img)
+        if _is_bad_cutout(cutout_check):
+            logger.info("Вырезание плохое (вешалка/фон) — белый слой")
+            return _blend_white(image)
 
         # 5. Композит на белом
         white = Image.new("RGB", (w, h), (255, 255, 255))

@@ -186,8 +186,13 @@ async def generate_product_photo_bg(
             return
 
         # 2. Генерация — синхронная, тяжёлая → в отдельный поток
+        item = await get_item(item_id)
+        force_overlay = getattr(item, "use_white_overlay", False) if item else False
         product_bytes = await asyncio.to_thread(
-            make_product_photo, image_bytes, category
+            make_product_photo,
+            image_bytes,
+            category,
+            force_overlay=force_overlay,
         )
 
         # 3. ВРЕМЕННО загружаем в Telegram, чтобы получить file_id.

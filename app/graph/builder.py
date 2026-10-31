@@ -107,6 +107,7 @@ def route_condition(state: BotState) -> str:
     if text == "list:more_toggle": return "list_more_toggle"
     if text == "list:menu": return "list_menu"
     if text == "list:toggle_laundry": return "list_toggle_laundry"
+    if text == "list:toggle_overlay": return "list_toggle_overlay"
     if text.startswith("laundry:set:"): return "laundry_callback"
     # Капсула
     if text == "capsule:like": return "capsule_like"
@@ -254,6 +255,7 @@ def build_graph():
     builder.add_node("list_ai_analyze", nodes.list_ai_analyze_node)
     builder.add_node("list_more_toggle", nodes.list_more_toggle_node)
     builder.add_node("list_toggle_laundry", nodes.list_toggle_laundry_node)
+    builder.add_node("list_toggle_overlay", nodes.list_toggle_overlay_node)
     builder.add_node("laundry_text", nodes.laundry_text_node)
     builder.add_node("laundry_callback", nodes.laundry_callback_node)
     builder.add_node("capsule_start", nodes.capsule_node)
@@ -328,6 +330,7 @@ def build_graph():
             "list_ai_analyze": "list_ai_analyze",
             "list_more_toggle": "list_more_toggle",
             "list_toggle_laundry": "list_toggle_laundry",
+            "list_toggle_overlay": "list_toggle_overlay",
             "laundry_text": "laundry_text",
             "laundry_callback": "laundry_callback",
             "capsule_start": "capsule_start",
@@ -377,6 +380,7 @@ def build_graph():
         "list_ai_analyze",
         "list_more_toggle",
         "list_toggle_laundry",
+        "list_toggle_overlay",
         "laundry_text", "laundry_callback",
         "capsule_start", "capsule_like", "capsule_dislike_menu", "capsule_remove",
         "list_delete_product_photo",
