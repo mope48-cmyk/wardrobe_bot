@@ -98,3 +98,13 @@ class UserMorningSettings(Base):
     last_sent_date: Mapped[str | None] = mapped_column(
         String, nullable=True
     )  # YYYY-MM-DD для защиты от дублей
+
+
+class UserPreferences(Base):
+    """Предпочтения пользователя (дизлайки вещей)."""
+
+    __tablename__ = "user_preferences"
+
+    user_id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    # Будем хранить список ID вещей, которые юзер исключил (в формате JSON)
+    disliked_items: Mapped[str] = mapped_column(String, default="[]")

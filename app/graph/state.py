@@ -45,4 +45,7 @@ class BotState(TypedDict, total=False):
     # Для /add из альбома: очередь file_id на добавление
     album_queue: list[str] | None
 
+    # Для капсулы: ID вещей текущей капсулы
+    capsule_ids: list[int] | None
+
     error: str | None

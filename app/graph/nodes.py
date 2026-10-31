@@ -333,12 +333,15 @@ async def more_services_node(state: BotState) -> dict:
     kb = [
         [
             {"text": "🌤 Подобрать образ", "callback_data": "menu:outfit"},
-            {"text": "🧬 Мой стиль", "callback_data": "menu:dna"},
+            {"text": "🧬 Мой стиль", "callback_data": "menu:dna"}
         ],
         [
-            {"text": "⚖️ Приговор", "callback_data": "menu:verdict"},
-            {"text": "☀️ Утренняя сводка", "callback_data": "menu:morning"},
+            {"text": "🎒 Капсула", "callback_data": "menu:capsule"},
+            {"text": "⚖️ Приговор", "callback_data": "menu:verdict"}
         ],
+        [
+            {"text": "☀️ Утренняя сводка", "callback_data": "menu:morning"}
+        ]
     ]
     return {
         "messages": [
@@ -3337,3 +3340,147 @@ async def laundry_callback_node(state: BotState) -> dict:
         ],
         "step": None,
     }
+
+
+# ============================================================
+# 🎒 Капсульный гардероб
+# ============================================================
+
+
+async def capsule_node(state: BotState) -> dict:
+    from app.db.repository import get_disliked_items
+    from app.services.capsule import generate_capsule
+
+    items = await get_items(state["user_id"])
+    disliked = await get_disliked_items(state["user_id"])
+
+    capsule = generate_capsule(list(items), disliked)
+
+    if not capsule:
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        "Для создания капсулы нужно минимум 5 чистых вещей "
+                        "(не в стирке). Добавьте больше вещей в гардероб!"
+                    ),
+                    additional_kwargs=_kb(MENU_KEYBOARD),
+                )
+            ],
+            "step": None,
+        }
+
+    lines = [
+        "🎒 <b>Ваш идеальный капсульный гардероб</b>\n",
+        "Вот 10–15 вещей, которые идеально сочетаются между собой "
+        "и покроют 90% ваших выходов:\n",
+    ]
+
+    by_cat = {}
+    for item in capsule:
+        by_cat.setdefault(item.category, []).append(item)
+
+    for cat, label in [
+        ("верх", "👕 Верх"),
+        ("низ", "👖 Низ"),
+        ("обувь", "👟 Обувь"),
+        ("аксессуар", "🧢 Аксессуары"),
+    ]:
+        if cat in by_cat:
+            lines.append(f"<b>{label}:</b>")
+            for item in by_cat[cat]:
+                colors = ", ".join(get_colors(item))
+                lines.append(f"• {item.type} ({colors})")
+            lines.append("")
+
+    text = "\n".join(lines).rstrip()
+
+    # Сохраняем ID капсулы в state, чтобы знать, какие вещи показывать для дизлайка
+    capsule_ids = [i.id for i in capsule]
+
+    kb = [
+        [{"text": "👍 Отличная капсула", "callback_data": "capsule:like"}],
+        [{"text": "👎 Исключить вещь", "callback_data": "capsule:dislike"}],
+    ]
+
+    return {
+        "messages": [
+            AIMessage(content=text, additional_kwargs={"inline_keyboard": kb})
+        ],
+        "step": "capsule_view",
+        "capsule_ids": capsule_ids,  # Сохраняем в стейт
+    }
+
+
+async def capsule_like_node(state: BotState) -> dict:
+    return {
+        "messages": [
+            AIMessage(
+                content=(
+                    "Браво! Рад, что капсула пришлась вам по вкусу. "
+                    "Носите с удовольствием!"
+                ),
+                additional_kwargs=_kb(MENU_KEYBOARD),
+            )
+        ],
+        "step": None,
+    }
+
+
+async def capsule_dislike_menu_node(state: BotState) -> dict:
+    """Показывает список вещей из капсулы для исключения."""
+    capsule_ids = state.get("capsule_ids") or []
+    if not capsule_ids:
+        return {
+            "messages": [
+                AIMessage(
+                    content="Капсула устарела, запустите /capsule заново."
+                )
+            ]
+        }
+
+    kb = []
+    for item_id in capsule_ids:
+        item = await get_item(item_id)
+        if item:
+            kb.append(
+                [
+                    {
+                        "text": f"❌ {item.type.capitalize()}",
+                        "callback_data": f"capsule:remove:{item.id}",
+                    }
+                ]
+            )
+
+    kb.append([{"text": "⬅️ Назад", "callback_data": "capsule:back"}])
+
+    return {
+        "messages": [
+            AIMessage(
+                content=(
+                    "Что именно вам не нравится? Нажмите на вещь, "
+                    "и я исключу ее из капсулы."
+                ),
+                additional_kwargs={"inline_keyboard": kb},
+            )
+        ],
+        "step": "capsule_dislike",
+    }
+
+
+async def capsule_remove_node(state: BotState) -> dict:
+    from app.db.repository import add_disliked_item
+
+    text = (state.get("input_text") or "").strip()
+    item_id = int(text.split(":")[-1])
+
+    await add_disliked_item(state["user_id"], item_id)
+
+    # Пересобираем капсулу без этой вещи
+    res = await capsule_node(state)
+
+    # Добавляем сообщение об исключении перед новой капсулой
+    res["messages"].insert(
+        0, AIMessage(content="Понял! Исключил вещь. Вот обновленная капсула:")
+    )
+    return res

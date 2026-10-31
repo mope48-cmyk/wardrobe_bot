@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import delete, or_, select, update
 
 from app.db.database import SessionLocal
-from app.db.models import UserMorningSettings, WardrobeItem
+from app.db.models import UserMorningSettings, UserPreferences, WardrobeItem
 
 logger = logging.getLogger(__name__)
 
@@ -229,3 +229,30 @@ async def get_users_for_morning_push(
             if current_day in days_list:
                 users.append(row)
         return users
+
+
+async def get_disliked_items(user_id: int) -> list[int]:
+    async with SessionLocal() as session:
+        prefs = await session.get(UserPreferences, user_id)
+        if prefs and prefs.disliked_items:
+            try:
+                return json.loads(prefs.disliked_items)
+            except Exception:
+                return []
+        return []
+
+
+async def add_disliked_item(user_id: int, item_id: int) -> None:
+    async with SessionLocal() as session:
+        prefs = await session.get(UserPreferences, user_id)
+        if not prefs:
+            prefs = UserPreferences(
+                user_id=user_id, disliked_items=json.dumps([item_id])
+            )
+            session.add(prefs)
+        else:
+            disliked = json.loads(prefs.disliked_items or "[]")
+            if item_id not in disliked:
+                disliked.append(item_id)
+                prefs.disliked_items = json.dumps(disliked)
+        await session.commit()
