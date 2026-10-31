@@ -106,26 +106,24 @@ def _build_reply_markup(spec):
 
 
 def _build_inline_markup(spec: list[list[dict]] | None):
-    """Собрать InlineKeyboardMarkup из спеки.
-
-    spec — список рядов, каждый ряд — список dict с полями
-    "text" и "callback_data". Например:
-
-        [[{"text": "⬅️ Назад", "callback_data": "list:prev"},
-          {"text": "Вперёд ➡️", "callback_data": "list:next"}]]
-    """
+    """Собрать InlineKeyboardMarkup из спеки."""
     if not spec:
         return None
-    rows = [
-        [
-            InlineKeyboardButton(
-                text=btn["text"],
-                callback_data=btn["callback_data"],
-            )
-            for btn in row
-        ]
-        for row in spec
-    ]
+    rows = []
+    for row in spec:
+        btn_row = []
+        for btn in row:
+            if "url" in btn:
+                btn_row.append(
+                    InlineKeyboardButton(text=btn["text"], url=btn["url"])
+                )
+            else:
+                btn_row.append(
+                    InlineKeyboardButton(
+                        text=btn["text"], callback_data=btn["callback_data"]
+                    )
+                )
+        rows.append(btn_row)
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
