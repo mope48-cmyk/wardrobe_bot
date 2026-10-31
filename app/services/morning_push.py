@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime
 from html import escape as esc
+from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 from aiogram.types import BufferedInputFile
@@ -80,7 +81,8 @@ async def send_morning_push(bot: Bot, chat_id: int, settings) -> None:
         )
 
         await update_morning_settings(
-            chat_id, last_sent_date=datetime.now().strftime("%Y-%m-%d")
+            chat_id,
+            last_sent_date=datetime.now(ZoneInfo("Europe/Moscow")).strftime("%Y-%m-%d"),
         )
         logger.info(f"Утренний пуш отправлен для {chat_id}")
     except Exception:

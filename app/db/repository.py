@@ -4,6 +4,7 @@ import json
 import logging
 from datetime import datetime
 from typing import Sequence
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, or_, select, update
 
@@ -206,15 +207,18 @@ async def get_users_for_morning_push(
     current_time: str, current_day: int
 ) -> list[UserMorningSettings]:
     """Возвращает настройки пользователей, которым пора отправить сводку."""
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    # Берем дату строго по Москве
+    today_str = datetime.now(ZoneInfo("Europe/Moscow")).strftime("%Y-%m-%d")
+
     async with SessionLocal() as session:
         result = await session.execute(
             select(UserMorningSettings).where(
-                UserMorningSettings.enabled.is_(True),
+                UserMorningSettings.enabled == True,
                 UserMorningSettings.time_str == current_time,
+                # ИСПРАВЛЕНИЕ: Берем, если дата не сегодня ИЛИ если она вообще не задана (NULL)
                 or_(
-                    UserMorningSettings.last_sent_date.is_(None),
                     UserMorningSettings.last_sent_date != today_str,
+                    UserMorningSettings.last_sent_date.is_(None),
                 ),
             )
         )
