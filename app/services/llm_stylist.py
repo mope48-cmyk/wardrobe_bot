@@ -1,7 +1,9 @@
 """Генерация комментария от Александра Васильева."""
 
 import logging
+import os
 
+import httpx
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_gigachat.chat_models import GigaChat
 
@@ -25,6 +27,72 @@ else:
     logger.warning("GIGACHAT_CREDENTIALS не задан — комментарии отключены")
 
 
+# ---------------------------------------------------------------------------
+# Резервный провайдер: OpenRouter (бесплатные модели, без подписки)
+# ---------------------------------------------------------------------------
+
+OPENROUTER_BASE = "https://openrouter.ai/api/v1/chat/completions"
+DEFAULT_OPENROUTER_MODEL = "dots-studio/dots-3-note-preview:free"
+
+
+def _get_openrouter_model() -> str:
+    model = os.getenv("OPENROUTER_MODEL", DEFAULT_OPENROUTER_MODEL).strip()
+    return model or DEFAULT_OPENROUTER_MODEL
+
+
+async def _openrouter_complete(
+    system: str, user: str, temperature: float = 0.7
+) -> str | None:
+    """Обратиться к OpenRouter. Возвращает текст или None."""
+    api_key = settings.OPENROUTER_API_KEY
+    if not api_key:
+        return None
+
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            r = await client.post(
+                OPENROUTER_BASE,
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={
+                    "model": _get_openrouter_model(),
+                    "messages": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                    "temperature": temperature,
+                    "max_tokens": 600,
+                },
+            )
+            r.raise_for_status()
+            data = r.json()
+            choices = data.get("choices") or [{}]
+            msg = (choices[0] or {}).get("message") or {}
+            text = msg.get("content") or msg.get("reasoning_content") or ""
+            return text.strip() or None
+    except Exception:
+        logger.exception("Ошибка OpenRouter")
+        return None
+
+
+async def _llm_generate(
+    system: str, user: str, temperature: float = 0.7
+) -> str | None:
+    """GigaChat → OpenRouter. Возвращает текст или None, если оба недоступны."""
+    if _llm is not None:
+        try:
+            response = await _llm.ainvoke([
+                SystemMessage(content=system),
+                HumanMessage(content=user),
+            ])
+            text = response.content.strip() if response.content else ""
+            if text:
+                return text
+        except Exception:
+            logger.warning("GigaChat недоступен, переключаюсь на OpenRouter", exc_info=True)
+
+    return await _openrouter_complete(system, user, temperature)
+
+
 async def generate_vasiliev_comment(
     weather: dict,
     location: str,
@@ -38,7 +106,7 @@ async def generate_vasiliev_comment(
     relaxed_categories — оставлен для обратной совместимости с nodes.py.
     В промпте больше не используется: вместо него введены жёсткие правила 6 и 7.
     """
-    if _llm is None or not items:
+    if not items:
         return None
 
     temp = weather.get("feels_like", weather.get("temp", 15))
@@ -98,26 +166,19 @@ async def generate_vasiliev_comment(
         f"Представь свой образ пользователю. Уложись в {max_chars} символов!"
     )
 
-    try:
-        response = await _llm.ainvoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt),
-        ])
-        text = response.content.strip()
-
-        if len(text) > max_chars:
-            text = text[:max_chars - 3] + "..."
-
-        return text
-    except Exception:
-        logger.exception("Ошибка генерации комментария Васильева")
+    text = await _llm_generate(system_prompt, user_prompt, temperature=0.7)
+    if not text:
         return None
+
+    if len(text) > max_chars:
+        text = text[: max_chars - 3] + "..."
+    return text
 
 
 async def generate_chat_response(user_text: str) -> str | None:
     """Сгенерировать остроумный ответ на любую фразу пользователя."""
-    if _llm is None:
-        return "Ах, Боже мой! У меня сегодня нет вдохновения..."
+    if not user_text or not user_text.strip():
+        return None
 
     system_prompt = (
         "Ты — великий историк моды Александр Васильев. Твоя манера "
@@ -131,18 +192,13 @@ async def generate_chat_response(user_text: str) -> str | None:
         "эффектно пошутить. Ответ должен быть коротким (1-2 предложения)."
     )
 
-    try:
-        response = await _llm.ainvoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_text)
-        ])
-        return response.content.strip()
-    except Exception:
-        logger.exception("Ошибка генерации свободного ответа")
-        return (
-            "Ах, я вас совершенно не понимаю! Наберите /info, "
-            "чтобы я напомнил вам правила хорошего тона."
-        )
+    text = await _llm_generate(system_prompt, user_text, temperature=0.9)
+    if text:
+        return text
+    return (
+        "Ах, я вас совершенно не понимаю! Наберите /info, "
+        "чтобы я напомнил вам правила хорошего тона."
+    )
 
 
 async def generate_dna_comment(
@@ -152,7 +208,7 @@ async def generate_dna_comment(
 
     profile_brief — готовый текстовый бриф из style_dna.profile_to_llm_brief().
     """
-    if _llm is None:
+    if not profile_brief or not profile_brief.strip():
         return None
 
     system_prompt = (
@@ -178,15 +234,10 @@ async def generate_dna_comment(
         f"Составь ДНК-профиль. Уложись в {max_chars} символов!"
     )
 
-    try:
-        response = await _llm.ainvoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt),
-        ])
-        text = response.content.strip()
-        if len(text) > max_chars:
-            text = text[: max_chars - 3] + "..."
-        return text
-    except Exception:
-        logger.exception("Ошибка генерации ДНК-профиля")
+    text = await _llm_generate(system_prompt, user_prompt, temperature=0.7)
+    if not text:
         return None
+
+    if len(text) > max_chars:
+        text = text[: max_chars - 3] + "..."
+    return text
