@@ -1,6 +1,14 @@
 """Тесты погодного модуля на Open-Meteo (app/services/weather.py)."""
 
-from app.services.weather import map_forecast, map_geocode_entry, map_weather_code
+import httpx
+import pytest
+
+from app.services.weather import (
+    get_weather,
+    map_forecast,
+    map_geocode_entry,
+    map_weather_code,
+)
 
 
 def test_map_weather_code_known():
@@ -62,3 +70,63 @@ def test_map_forecast_clear_no_precipitation():
 def test_map_forecast_empty():
     assert map_forecast({}) is None
     assert map_forecast({"current": None}) is None
+
+
+class _FakeResponse:
+    def __init__(self, data):
+        self._data = data
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self._data
+
+
+class _FlakyClient:
+    """Первый _N вызовов (глобально) падают с ConnectTimeout, дальше — успех."""
+
+    fails = 0
+    total_calls = 0
+
+    def __init__(self, timeout=None):
+        self.timeout = timeout
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def get(self, url, params=None):
+        _FlakyClient.total_calls += 1
+        if _FlakyClient.total_calls <= _FlakyClient.fails:
+            raise httpx.ConnectTimeout("boom")
+        return _FakeResponse(
+            {"current": {"temperature_2m": 5.0, "weather_code": 0}}
+        )
+
+
+@pytest.mark.asyncio
+async def test_get_weather_retries_then_succeeds(monkeypatch):
+    _FlakyClient.fails = 2
+    _FlakyClient.total_calls = 0
+    monkeypatch.setattr("app.services.weather.httpx.AsyncClient", _FlakyClient)
+
+    weather = await get_weather(48.85, 2.35)
+
+    assert weather is not None
+    assert weather["temp"] == 5.0
+    assert weather["main"] == "Clear"
+
+
+@pytest.mark.asyncio
+async def test_get_weather_gives_up_after_max_attempts(monkeypatch, caplog):
+    _FlakyClient.fails = 999
+    _FlakyClient.total_calls = 0
+    monkeypatch.setattr("app.services.weather.httpx.AsyncClient", _FlakyClient)
+
+    weather = await get_weather(48.85, 2.35)
+
+    assert weather is None
+    assert "недоступен после 3 попыток" in caplog.text

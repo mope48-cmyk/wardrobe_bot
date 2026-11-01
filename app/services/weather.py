@@ -9,6 +9,7 @@ Open-Meteo — бесплатный API без ключа и без жёстки
                                "wind_speed", "has_precipitation"} | None
 """
 
+import asyncio
 import logging
 
 import httpx
@@ -17,6 +18,11 @@ logger = logging.getLogger(__name__)
 
 GEOCODING_API = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_API = "https://api.open-meteo.com/v1/forecast"
+
+# Таймаут: соединение — 5с, чтение — 10с (в сумме не даём зависнуть).
+_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
+# Попыток с ретраем на транспортные ошибки (итого = _MAX_ATTEMPTS раз).
+_MAX_ATTEMPTS = 3
 
 # Коды погоды WMO → (короткий код, русское описание)
 _WMO = {
@@ -91,21 +97,38 @@ def map_forecast(data: dict) -> dict | None:
     }
 
 
+async def _request_json(url: str, params: dict) -> dict | None:
+    """GET с ретраем на транспортные ошибки; None при итоговой неудаче."""
+    last_exc = None
+    for attempt in range(_MAX_ATTEMPTS):
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+                r = await client.get(url, params=params)
+                r.raise_for_status()
+                return r.json()
+        except httpx.TransportError as exc:
+            last_exc = exc
+            if attempt < _MAX_ATTEMPTS - 1:
+                await asyncio.sleep(0.5 * (attempt + 1))
+        except Exception:
+            # Не-транспортная ошибка (например, битый JSON) — ретраить бессмысленно
+            logger.exception("Ошибка запроса %s", url)
+            return None
+
+    logger.warning(
+        "API %s недоступен после %d попыток: %r",
+        url, _MAX_ATTEMPTS, last_exc,
+    )
+    return None
+
+
 async def geocode_city(city: str) -> dict | None:
     """Найти координаты по названию города."""
     if not city or not city.strip():
         return None
 
     params = {"name": city.strip(), "count": 1, "language": "ru", "format": "json"}
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.get(GEOCODING_API, params=params)
-            r.raise_for_status()
-            data = r.json()
-    except Exception:
-        logger.exception("Ошибка геокодирования для %r", city)
-        return None
-
+    data = await _request_json(GEOCODING_API, params)
     if not data or not data.get("results"):
         return None
     return map_geocode_entry(data["results"][0], city)
@@ -122,13 +145,7 @@ async def get_weather(lat: float, lon: float) -> dict | None:
         "wind_speed_unit": "ms",
         "timezone": "auto",
     }
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.get(FORECAST_API, params=params)
-            r.raise_for_status()
-            data = r.json()
-    except Exception:
-        logger.exception("Ошибка получения погоды lat=%s lon=%s", lat, lon)
+    data = await _request_json(FORECAST_API, params)
+    if not data:
         return None
-
     return map_forecast(data)
