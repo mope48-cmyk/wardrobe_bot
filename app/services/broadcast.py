@@ -66,6 +66,21 @@ def _split_message(text: str, max_chars: int = MAX_MESSAGE_CHARS) -> list[str]:
     return chunks
 
 
+def _new_suffix(current: str, last_sent: str) -> str:
+    """Возвращает часть `current`, которой ещё не было в прошлой рассылке.
+
+    Маркер хранит последний разосланный текст целиком; текст релиза растёт
+    дописыванием в конец, поэтому «новое» — это суффикс после общего префикса.
+    """
+    n = min(len(current), len(last_sent))
+    i = 0
+    while i < n and current[i] == last_sent[i]:
+        i += 1
+    if i >= len(current):
+        return ""
+    return current[i:].lstrip()
+
+
 async def send_release_broadcast(
     bot: Bot,
     file_path: str = "release_notes.txt",
@@ -83,22 +98,36 @@ async def send_release_broadcast(
         logger.info("Файл рассылки пуст. Пропускаем.")
         return
 
-    # Хэш текста для проверки, отправляли ли мы его уже
-    text_hash = hashlib.md5(text.encode('utf-8')).hexdigest()
-
+    # Что было разослано в прошлый раз (маркер хранит отправленный текст;
+    # старые маркеры — md5-хэш, их распознаём отдельно).
+    last_sent = ""
     if os.path.exists(sent_marker):
         with open(sent_marker, encoding="utf-8") as f:
-            last_hash = f.read().strip()
-        if last_hash == text_hash:
-            logger.info("Этот релиз уже был успешно разослан ранее. Пропускаем.")
+            last_sent = f.read().strip()
+
+    is_legacy_hash = bool(re.fullmatch(r"[0-9a-f]{32}", last_sent))
+    if is_legacy_hash:
+        text_hash = hashlib.md5(text.encode("utf-8")).hexdigest()
+        if last_sent == text_hash:
+            logger.info(
+                "Этот релиз уже был разослан ранее (старый формат маркера). Пропускаем."
+            )
             return
+        # Старый хэш не совпал — шлём всё и переводим маркер на новый формат.
+        new_text = text
+    else:
+        new_text = _new_suffix(text, last_sent)
+        if not new_text:
+            logger.info("Новых релиз-ноутс с прошлой рассылки нет. Пропускаем.")
+            return
+        logger.info("Будет разослан новый блок релиза (%d символов).", len(new_text))
 
     logger.info("Начинаем рассылку релиза...")
     
     user_ids = await get_all_user_ids()
     logger.info("Найдено %d пользователей для рассылки.", len(user_ids))
 
-    messages = _split_message(text)
+    messages = _split_message(new_text)
     logger.info(
         "Текст релиза разбит на %d сообщений (по <=%d символов).",
         len(messages), MAX_MESSAGE_CHARS,
@@ -148,7 +177,7 @@ async def send_release_broadcast(
 
     try:
         with open(sent_marker, "w", encoding="utf-8") as f:
-            f.write(text_hash)
+            f.write(text)
         logger.info("Статус рассылки сохранен в %s", sent_marker)
     except Exception:
         logger.exception("Не удалось сохранить маркер рассылки")

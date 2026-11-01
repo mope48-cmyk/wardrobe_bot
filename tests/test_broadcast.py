@@ -75,9 +75,7 @@ async def test_broadcast_success_writes_sentinel(tmp_path, monkeypatch):
     _, marker = await _run_broadcast(tmp_path, bot, [111, 222], text)
 
     assert marker.exists()
-    assert marker.read_text(encoding="utf-8") == hashlib.md5(
-        text.encode("utf-8")
-    ).hexdigest()
+    assert marker.read_text(encoding="utf-8") == text
     # Короткий текст уходит одним сообщением каждому пользователю.
     assert bot.sent == [(111, text, "HTML"), (222, text, "HTML")]
 
@@ -117,3 +115,56 @@ async def test_broadcast_long_text_sends_chunks(tmp_path, monkeypatch):
         assert len(msg) <= MAX_MESSAGE_CHARS
         assert msg.count("<b>") == msg.count("</b>")
     assert marker.exists()
+
+
+@pytest.mark.asyncio
+async def test_broadcast_incremental_sends_only_new(tmp_path, monkeypatch):
+    """Дописанный блок уходит отдельно, повторный запуск ничего не шлёт."""
+    monkeypatch.setattr(
+        "app.services.broadcast.get_all_user_ids", _fake_user_ids([111])
+    )
+    bot = FakeBot()
+    notes = tmp_path / "release_notes.txt"
+    marker = tmp_path / "release_notes.sent"
+
+    first = "<b>Релиз 1.</b>"
+    notes.write_text(first, encoding="utf-8")
+    await send_release_broadcast(bot, file_path=str(notes), sent_marker=str(marker))
+    assert [c[1] for c in bot.sent] == [first]
+    assert marker.read_text(encoding="utf-8") == first
+
+    # Повторный запуск без изменений — ничего не шлём.
+    bot.sent.clear()
+    await send_release_broadcast(bot, file_path=str(notes), sent_marker=str(marker))
+    assert bot.sent == []
+
+    # Дописали в конец — уходит только новый блок.
+    second = "\n\n<b>Релиз 2.</b>"
+    notes.write_text(first + second, encoding="utf-8")
+    await send_release_broadcast(bot, file_path=str(notes), sent_marker=str(marker))
+    assert [c[1] for c in bot.sent] == ["<b>Релиз 2.</b>"]
+    assert marker.read_text(encoding="utf-8") == first + second
+
+
+@pytest.mark.asyncio
+async def test_broadcast_legacy_md5_sentinel(tmp_path, monkeypatch):
+    """Старый маркер (md5): совпадение — пропуск, несовпадение — полная рассылка."""
+    monkeypatch.setattr(
+        "app.services.broadcast.get_all_user_ids", _fake_user_ids([111])
+    )
+    notes = tmp_path / "release_notes.txt"
+    marker = tmp_path / "release_notes.sent"
+    text = "<b>Релиз.</b>"
+    notes.write_text(text, encoding="utf-8")
+
+    old_hash = hashlib.md5(text.encode("utf-8")).hexdigest()
+    marker.write_text(old_hash, encoding="utf-8")
+    bot = FakeBot()
+    await send_release_broadcast(bot, file_path=str(notes), sent_marker=str(marker))
+    assert bot.sent == []
+
+    marker.write_text("0" * 32, encoding="utf-8")
+    bot = FakeBot()
+    await send_release_broadcast(bot, file_path=str(notes), sent_marker=str(marker))
+    assert bot.sent == [(111, text, "HTML")]
+    assert marker.read_text(encoding="utf-8") == text
