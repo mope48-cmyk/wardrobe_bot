@@ -9,6 +9,7 @@ from app.services.weather import (
     get_weather_or_fallback,
     map_forecast,
     map_geocode_entry,
+    map_owm,
     map_weather_code,
 )
 
@@ -158,3 +159,60 @@ async def test_get_weather_or_fallback_passthrough(monkeypatch):
 
     assert was_fallback is False
     assert weather["temp"] == 5.0
+
+
+def test_map_owm_rain():
+    data = {
+        "cod": 200,
+        "main": {"temp": 15.2, "feels_like": 13.8},
+        "weather": [{"main": "Rain", "description": "небольшой дождь"}],
+        "wind": {"speed": 4.5},
+        "rain": {"1h": 0.2},
+    }
+    weather = map_owm(data)
+    assert weather["temp"] == 15.2
+    assert weather["feels_like"] == 13.8
+    assert weather["main"] == "Rain"
+    assert weather["description"] == "небольшой дождь"
+    assert weather["wind_speed"] == 4.5
+    assert weather["has_precipitation"] is True
+
+
+def test_map_owm_empty():
+    assert map_owm({}) is None
+    assert map_owm({"main": {}, "weather": []}) is None
+
+
+@pytest.mark.asyncio
+async def test_get_weather_prefers_owm(monkeypatch):
+    owm_result = {"temp": 12.0, "main": "Clear", "has_precipitation": False}
+
+    async def _fake_owm(lat, lon):
+        return owm_result
+
+    async def _fail(*a, **k):
+        raise AssertionError("Open-Meteo не должен вызываться при успешном OWM")
+
+    monkeypatch.setattr("app.services.weather._get_weather_owm", _fake_owm)
+    monkeypatch.setattr("app.services.weather._request_json", _fail)
+
+    assert await get_weather(48.85, 2.35) == owm_result
+
+
+@pytest.mark.asyncio
+async def test_get_weather_falls_back_to_meteo(monkeypatch):
+    async def _none(lat, lon):
+        return None
+
+    meteo_data = {"current": {"temperature_2m": 7.5, "weather_code": 61}}
+
+    async def _meteo(url, params):
+        return meteo_data
+
+    monkeypatch.setattr("app.services.weather._get_weather_owm", _none)
+    monkeypatch.setattr("app.services.weather._request_json", _meteo)
+
+    weather = await get_weather(48.85, 2.35)
+    assert weather is not None
+    assert weather["main"] == "Rain"
+    assert weather["temp"] == 7.5

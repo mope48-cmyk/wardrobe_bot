@@ -1,7 +1,9 @@
-"""Получение погоды и геокодирование через Open-Meteo.
+"""Получение погоды и геокодирование.
 
-Open-Meteo — бесплатный API без ключа и без жёстких лимитов, в отличие
-от OpenWeatherMap (OWM_API_KEY + ~1000 запросов/день в бесплатном тире).
+Основной источник погоды — OpenWeatherMap (OWM_API_KEY из .env, ~1000
+запросов/день бесплатно). Фолбэк — Open-Meteo (без ключа). Если недоступны
+оба — используется FALLBACK_WEATHER (см. get_weather_or_fallback).
+
 Контракт функций сохранён:
 
     geocode_city(city) -> {"lat", "lon", "city"} | None
@@ -11,6 +13,7 @@ Open-Meteo — бесплатный API без ключа и без жёстки
 
 import asyncio
 import logging
+import os
 
 import httpx
 
@@ -18,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 GEOCODING_API = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_API = "https://api.open-meteo.com/v1/forecast"
+OWM_API = "https://api.openweathermap.org/data/2.5/weather"
 
 # Таймаут: соединение — 5с, чтение — 10с (в сумме не даём зависнуть).
 _TIMEOUT = httpx.Timeout(10.0, connect=5.0)
@@ -145,8 +149,60 @@ async def geocode_city(city: str) -> dict | None:
     return map_geocode_entry(data["results"][0], city)
 
 
+def map_owm(data: dict) -> dict | None:
+    """Преобразовать ответ OpenWeatherMap в наш словарь погоды."""
+    main = data.get("main") or {}
+    weather_arr = data.get("weather") or []
+    if not main or not weather_arr:
+        return None
+
+    w = weather_arr[0]
+    code_main = w.get("main") or "Clouds"
+    has_precip = (
+        code_main in _PRECIPITATION_MAINS
+        or bool(data.get("rain"))
+        or bool(data.get("snow"))
+    )
+    return {
+        "temp": float(main.get("temp", 0)),
+        "feels_like": float(main.get("feels_like", 0)),
+        "description": w.get("description") or "",
+        "main": code_main,
+        "wind_speed": float((data.get("wind") or {}).get("speed", 0)),
+        "has_precipitation": has_precip,
+    }
+
+
+async def _get_weather_owm(lat: float, lon: float) -> dict | None:
+    """OpenWeatherMap (основной источник)."""
+    api_key = os.getenv("OWM_API_KEY", "").strip()
+    if not api_key:
+        logger.warning("OWM_API_KEY не задан — пропускаем OpenWeatherMap")
+        return None
+
+    params = {
+        "lat": lat,
+        "lon": lon,
+        "appid": api_key,
+        "units": "metric",
+        "lang": "ru",
+    }
+    data = await _request_json(OWM_API, params)
+    if not data:
+        logger.warning("OpenWeatherMap недоступен (пустой ответ)")
+        return None
+    if str(data.get("cod")) != "200":
+        logger.warning("OpenWeatherMap вернул ошибку: %s", data.get("message"))
+        return None
+    return map_owm(data)
+
+
 async def get_weather(lat: float, lon: float) -> dict | None:
-    """Получить текущую погоду по координатам."""
+    """Получить текущую погоду: OWM, затем Open-Meteo как фолбэк."""
+    owm = await _get_weather_owm(lat, lon)
+    if owm is not None:
+        return owm
+
     params = {
         "latitude": lat,
         "longitude": lon,
