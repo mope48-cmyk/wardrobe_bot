@@ -67,6 +67,15 @@ def test_dark_denim_stays_dark_blue():
     assert primary in ("синий", "тёмно-синий"), primary
 
 
+def test_black_with_specular_highlights_stays_black():
+    # Чёрная вещь с умеренными бликами (часть пикселей светлее) не должна
+    # уходить в серый/тёмно-синий/коричневый.
+    px = ([(10, 10, 12)] * 900) + ([(60, 60, 65)] * 700)
+    primary, _, detected = detect_color(_image_from_pixels(px))
+    assert primary == "чёрный", primary
+    assert detected == ["чёрный"]
+
+
 def test_rgb_to_color_name_achromatic_threshold():
     # Ниже порога s<16 — серый, а не бежевый
     assert _rgb_to_color_name(190, 185, 175) == "светло-серый"

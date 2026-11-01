@@ -1,5 +1,6 @@
 """Распознавание одежды через SigLIP. Цвет — HSV-анализ с учётом маски."""
 
+import collections
 import colorsys
 import hashlib
 import logging
@@ -477,17 +478,35 @@ def detect_color(
     # P2.3: определяем многоцветность
     total_weight = sum(w for _, w in sorted_names)
 
-    # Чёрный — только если чёрный/тёмно-серый ДОМИНИРУЮТ в весах
-    # И насыщенных пикселей мало. Тени отсечены выше, поэтому простая
-    # доля тёмного больше не решает.
+    # Чёрный — только если чёрный/тёмно-серый ДОМИНИРУЮТ в весах,
+    # насыщенных пикселей мало И нет явного цветного «ядра».
+    # Порог colored_ratio выше (0.60), чтобы не терять настоящий чёрный
+    # с бликами/маской; тёмные цветные спасаются проверкой насыщенности ниже.
     dark_weight = sum(
         w for name, w in name_weights.items()
         if name in ("чёрный", "тёмно-серый")
     )
-    if colored_ratio < 0.45 and total_weight > 0 and (dark_weight / total_weight) > 0.55:
+    colored_ratio_now = colored_ratio
+    if colored_ratio_now < 0.60 and total_weight > 0 and (dark_weight / total_weight) > 0.55:
+        # Исключение: если среди цветных пикселей доминирует один конкретный
+        # насыщенный цвет (тёмно-синий, коричневый и т.п.) — оставляем его,
+        # а не объявляем чёрным.
+        colored_names = collections.Counter()
+        for p in colored_pixels:
+            r, g, b = p
+            _, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+            if v < 0.30:
+                continue  # слишком тёмные цветные ≈ неясные
+            colored_names[_rgb_to_color_name(r, g, b)] += 1
+        if colored_names:
+            top_color, _ = colored_names.most_common(1)[0]
+            if top_color in ("тёмно-синий", "коричневый", "тёмно-коричневый",
+                             "оливковый", "синий", "зелёный", "бордовый"):
+                return top_color, [top_color, *[c for c in top3 if c != top_color][:2]], [top_color]
+
         logger.info(
             "detect_color: dark dominance dark_w=%.2f total=%.2f colored=%.2f → чёрный",
-            dark_weight, total_weight, colored_ratio,
+            dark_weight, total_weight, colored_ratio_now,
         )
         return "чёрный", ["чёрный", "тёмно-серый", "тёмно-синий"], ["чёрный"]
 
