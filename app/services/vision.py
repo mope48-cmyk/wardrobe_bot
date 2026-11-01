@@ -22,7 +22,9 @@ torch.set_num_threads(4)
 logger = logging.getLogger(__name__)
 
 SIGLIP_MODEL_ID = "google/siglip-so400m-patch14-384"
-SIGLIP_THRESHOLD = 0.15
+# Порог уверенности SigLIP. Ниже — считаем «не распознано» (пользователь
+# укажет вручную), чтобы неуверенные ответы не попадали в БД.
+SIGLIP_THRESHOLD = 0.30
 
 _SIGLIP_CACHE_MAX = 128
 _siglip_cache: dict[str, list[dict]] = {}

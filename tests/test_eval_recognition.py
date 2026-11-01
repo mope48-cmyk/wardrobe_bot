@@ -51,6 +51,19 @@ def test_canon_color():
     assert canon_color("синий") == "синий"
 
 
+def test_type_alias_groups():
+    from tools.eval_recognition import type_group
+
+    # Синонимы должны совпадать внутри группы
+    assert type_group("куртка-бомбер") == type_group("бомбер")
+    assert type_group("рубашка") == type_group("лонгслив")
+    assert type_group("зип худи") == type_group("худи")
+    assert type_group("спортивные штаны") == type_group("джоггеры")
+    assert type_group("свитер") == type_group("шерстяной свитер")
+    # Разные группы не должны совпадать
+    assert type_group("рубашка") != type_group("куртка")
+
+
 def test_collect_labels_uses_manifest(tmp_path):
     """При наличии manifest.csv метки берутся из него, а не из имени файла."""
     from tools.eval_recognition import collect_labels

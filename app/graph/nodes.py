@@ -2056,6 +2056,30 @@ async def add_photo_node(state: BotState) -> dict:
             "draft_item": draft,
         }
 
+    # Второе мнение GigaChat: при низкой уверенности SigLIP (<0.45)
+    # спрашиваем мультимодальную модель и заменяем её вариантом.
+    if result.get("confidence", 0.0) < 0.45:
+        ai = await analyze_clothing_with_gigachat(image_bytes)
+        if ai:
+            try:
+                ai_opt = {
+                    "type": ai["type"],
+                    "category": ai["category"],
+                    "confidence": 0.6,
+                    "warmth_level": ai.get("warmth_level", 3),
+                    "waterproof": ai.get("waterproof", False),
+                    "formal_level": ai.get("formal_level", "casual"),
+                    "season": ai.get("season", "универсальная"),
+                    "layer": ai.get("layer", "base"),
+                }
+                result["options"] = [ai_opt]
+                result["type"] = ai["type"]
+                result["category"] = ai["category"]
+                result["layer"] = ai_opt["layer"]
+                result["confidence"] = 0.6
+            except Exception:
+                logger.exception("Второе мнение GigaChat не удалось, оставляем SigLIP")
+
     options = result["options"]
     draft["options"] = options
     # result["detected_colors"] — 1–3 основных цвета.
