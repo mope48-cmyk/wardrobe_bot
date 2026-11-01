@@ -17,6 +17,7 @@ OpenRouter (fallback), Open-Meteo.
   - [Граф состояний LangGraph](diagrams/graph_flow.html)
   - [Схема базы данных](diagrams/database.html)
   - [Деплой (Docker)](diagrams/deployment.html)
+  - [Алгоритм подбора одежды](outfit-algorithm.html)
 
 ---
 

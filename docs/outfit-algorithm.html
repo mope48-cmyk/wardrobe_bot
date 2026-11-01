@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Алгоритм подбора одежды — «Мой гардероб»</title>
+<style>
+  :root{
+    --bg:#12141a; --card:#1c1f27; --line:#2a2e3a; --text:#e6e6ea;
+    --muted:#9aa0b4; --accent:#4f6ef7; --green:#56d364; --red:#e05c5c;
+    --yellow:#e0c356; --subtle:#252833;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);
+      font-family:system-ui,sans-serif;line-height:1.55;padding:32px 20px;}
+  .wrap{max-width:980px;margin:0 auto;}
+  h1{font-size:26px;margin:0 0 4px;}
+  .sub{color:var(--muted);margin-bottom:28px;}
+  h2{font-size:20px;margin:36px 0 12px;border-bottom:1px solid var(--line);padding-bottom:6px;}
+  h3{font-size:16px;margin:24px 0 8px;color:var(--accent);}
+  p{margin:8px 0;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+        padding:16px 20px;margin:14px 0;}
+  .note{background:var(--subtle);border-left:3px solid var(--accent);
+        border-radius:0 8px 8px 0;padding:10px 14px;margin:12px 0;font-size:14px;}
+  .warn{background:var(--subtle);border-left:3px solid var(--yellow);}
+  .good{background:var(--subtle);border-left:3px solid var(--green);}
+  ul{margin:6px 0 6px 20px;}
+  li{margin:4px 0;}
+  code{background:var(--subtle);padding:2px 6px;border-radius:5px;
+       font-family:ui-monospace,monospace;font-size:13px;}
+  .svge{display:flex;justify-content:center;margin:20px 0;}
+  .flow{width:100%;max-width:920px;height:auto;}
+  .tag{display:inline-block;font-size:12px;padding:2px 10px;border-radius:20px;
+       margin-right:8px;font-weight:500;}
+  .tag.hard{background:#3a2020;color:#ffb3b3;}
+  .tag.soft{background:#2c2a1a;color:#e8d58a;}
+  .tag.auto{background:#16223a;color:#9db8f0;}
+  table{border-collapse:collapse;width:100%;font-size:14px;margin:14px 0;}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;}
+  th{background:var(--subtle);color:var(--muted);font-weight:500;}
+  .kpi{display:flex;flex-wrap:wrap;gap:12px;margin:16px 0;}
+  .kpi div{background:var(--card);border:1px solid var(--line);border-radius:10px;
+           padding:10px 14px;font-size:13px;flex:1;min-width:150px;}
+  .kpi b{display:block;font-size:18px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>🧥 Как бот подбирает одежду</h1>
+  <div class="sub">Простое объяснение алгоритма «Мой гардероб» (app/services/outfit.py)</div>
+
+  <p>
+    Когда ты говоришь <b>«Подобрать образ»</b> и выбираешь город и повод, бот:
+    узнаёт погоду, открывает твой гардероб и за ~1–2 секунды выдаёт 1–5 вариантов.
+    Ниже — как именно он решает, что надеть.
+  </p>
+
+  <h2>Общая схема</h2>
+  <div class="svge">
+    <svg class="flow" viewBox="0 0 920 560" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,sans-serif">
+      <defs>
+        <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#8a90a8"/>
+        </marker>
+      </defs>
+
+      <!-- Блок 1: входные данные -->
+      <rect x="320" y="20" width="280" height="62" rx="10" fill="#1c1f27" stroke="#4f6ef7" stroke-width="2"/>
+      <text x="460" y="45" text-anchor="middle" fill="#e6e6ea" font-size="15" font-weight="600">Вход: погода + гардероб + повод</text>
+      <text x="460" y="66" text-anchor="middle" fill="#9aa0b4" font-size="12">t° и ветер · вещи из БД · стиль повода</text>
+
+      <line x1="460" y1="82" x2="460" y2="112" stroke="#8a90a8" stroke-width="1.5" marker-end="url(#arr)"/>
+
+      <!-- Блок 2: расчет teff -->
+      <rect x="330" y="112" width="260" height="50" rx="10" fill="#1c1f27" stroke="#2a2e3a"/>
+      <text x="460" y="135" text-anchor="middle" fill="#e6e6ea" font-size="14" font-weight="600">1. «Эффективная температура» (teff)</text>
+      <text x="460" y="153" text-anchor="middle" fill="#9aa0b4" font-size="12">при ветре ≥8 м/с −2°</text>
+
+      <line x1="460" y1="162" x2="460" y2="192" stroke="#8a90a8" stroke-width="1.5" marker-end="url(#arr)"/>
+
+      <!-- Блок 3: разбор и цели -->
+      <rect x="160" y="192" width="600" height="78" rx="10" fill="#1c1f27" stroke="#2a2e3a"/>
+      <text x="460" y="216" text-anchor="middle" fill="#e6e6ea" font-size="14" font-weight="600">2. Цели по слоям и теплу</text>
+      <text x="460" y="238" text-anchor="middle" fill="#9aa0b4" font-size="12">по teff: базовый слой / средний / куртка · нужен ли «средний» и «верхний» слой</text>
+      <text x="460" y="258" text-anchor="middle" fill="#9aa0b4" font-size="12">например: +20° → только футболка · +8° → футболка + рубашка + куртка</text>
+
+      <line x1="460" y1="270" x2="460" y2="300" stroke="#8a90a8" stroke-width="1.5" marker-end="url(#arr)"/>
+
+      <!-- Блок 4: фильтр кандидатов -->
+      <rect x="140" y="300" width="640" height="92" rx="10" fill="#1c1f27" stroke="#2a2e3a"/>
+      <text x="460" y="324" text-anchor="middle" fill="#e6e6ea" font-size="14" font-weight="600">3. Отбор кандидатов (жёсткие запреты)</text>
+      <text x="460" y="348" text-anchor="middle" fill="#9aa0b4" font-size="12">✕ в стирке · ✕ летние вещи в холод (шорты / сандалии при &lt;15°)</text>
+      <text x="460" y="368" text-anchor="middle" fill="#9aa0b4" font-size="12">✕ стиль, не подходящий поводу (порог) · ✕ если слой «висит» (куртка без базы)</text>
+      <text x="460" y="388" text-anchor="middle" fill="#9aa0b4" font-size="12">✓ верх берётся по слоям: база → средний → куртка</text>
+
+      <line x1="460" y1="392" x2="460" y2="422" stroke="#8a90a8" stroke-width="1.5" marker-end="url(#arr)"/>
+
+      <!-- Блок 5: скор-->
+      <rect x="180" y="422" width="560" height="66" rx="10" fill="#1c1f27" stroke="#2a2e3a"/>
+      <text x="460" y="446" text-anchor="middle" fill="#e6e6ea" font-size="14" font-weight="600">4. Скор каждой комбинации (0–1)</text>
+      <text x="460" y="470" text-anchor="middle" fill="#9aa0b4" font-size="12">45% тепло · 25% влагостойкость · 15% сезон · 15% материал</text>
+      <text x="460" y="488" text-anchor="middle" fill="#9aa0b4" font-size="12">− штрафы: цветовая гармония, лишние слои, отсутствие слоя, дождь без куртки</text>
+
+      <!-- Ветка: если комбинаций нет -->
+      <line x1="180" y1="455" x2="60" y2="455" stroke="#8a90a8" stroke-width="1.5"/>
+      <text x="52" y="445" text-anchor="middle" fill="#9aa0b4" font-size="12" transform="rotate(-90 60 445)">нет вариантов</text>
+      <line x1="60" y1="455" x2="60" y2="522" stroke="#8a90a8" stroke-width="1.5" marker-end="url(#arr)"/>
+      <rect x="10" y="522" width="100" height="34" rx="8" fill="#2c2a1a" stroke="#e0c356"/>
+      <text x="60" y="543" text-anchor="middle" fill="#e8d58a" font-size="12">Fallback (упрощённый)</text>
+
+      <line x1="460" y1="488" x2="460" y2="522" stroke="#8a90a8" stroke-width="1.5" marker-end="url(#arr)"/>
+
+      <!-- Блок 6: аксессуары + топ-5 -->
+      <rect x="250" y="522" width="420" height="34" rx="8" fill="#1c1f27" stroke="#4f6ef7"/>
+      <text x="460" y="543" text-anchor="middle" fill="#e6e6ea" font-size="13" font-weight="600">5. Аксессуары + топ-5 самых «разнообразных»</text>
+    </svg>
+  </div>
+
+  <div class="note">
+    <b>Ключевая идея:</b> бот не просто «достаёт вещи» — он <i>перебирает комбинации</i>
+    и оценивает каждую по баллам, затем показывает лучшие. Оттого же гардероба
+    зависит, <i>сколько</i> вариантов ты увидишь.
+  </div>
+
+  <h2>Что происходит в каждом случае</h2>
+
+  <h3>☀️ Жара (teff ≥ 24°)</h3>
+  <ul>
+    <li>Средний слой и куртка <b>исключаются</b> — только база (футболка).</li>
+    <li>Из обуви — лёгкая (сандалии/кроссовки).</li>
+    <li>Из аксессуаров — очки / панама / кепка.</li>
+    <li>Ткани: лён, хлопок, шёлк (бонус).</li>
+  </ul>
+
+  <h3>🌤️ Тепло (18–24°)</h3>
+  <ul>
+    <li>База + возможно рубашка поверх (лёгкий «средний» слой).</li>
+    <li>Куртки не нужны.</li>
+    <li>Если в гардеробе нет базы — возьмётся то, что есть.</li>
+  </ul>
+
+  <h3>🍂 Прохладно (10–18°)</h3>
+  <ul>
+    <li>База + лёгкая куртка (или утеплённая рубашка).</li>
+    <li>Начинает требоваться «средний» слой.</li>
+    <li>Ветер ≥8 м/с — ощущается холоднее (−2°).</li>
+  </ul>
+
+  <h3>❄️ Холодно (0–10°)</h3>
+  <ul>
+    <li>Нужны все три слоя: база + средний + куртка.</li>
+    <li>Куртка должна быть достаточно толстой (штраф за тонкую при &lt;0°).</li>
+    <li>Капюшон — бонус в дождь.</li>
+  </ul>
+
+  <h3>🥶 Мороз (&lt;0°)</h3>
+  <ul>
+    <li>Максимальное тепло: база (шерсть/кашемир) + свитер + пуховик.</li>
+    <li>Из аксессуаров — шапка, шарф, перчатки.</li>
+  </ul>
+
+  <h3>🌧️ Дождь (has_precipitation)</h3>
+  <ul>
+    <li>Летние вещи исключаются.</li>
+    <li>Нужна водонепроницаемая верхняя одежда/обувь (штраф, если её нет).</li>
+    <li>Зонт добавляется автоматически и игнорирует список поводов.</li>
+    <li>Капюшон — бонус.</li>
+  </ul>
+
+  <h2>Повод влияет на «стиль»</h2>
+  <p>Каждая вещь имеет стиль (casual / business / sport). По поводу задаётся приоритет:</p>
+  <table>
+    <tr><th>Повод</th><th>Главный стиль</th><th>Второстепенный</th><th>Исключается (порог)</th></tr>
+    <tr><td>Работа / встреча</td><td>business</td><td>casual</td><td>sport</td></tr>
+    <tr><td>Спорт</td><td>sport</td><td>casual</td><td>business</td></tr>
+    <tr><td>Прогулка</td><td>casual</td><td>sport</td><td>—</td></tr>
+    <tr><td>Другое</td><td>casual</td><td>sport</td><td>—</td></tr>
+  </table>
+  <p>Если вещь «не в стиле» — она либо отбрасывается, либо (если всё плохо) попадает как «расслабленная» с пометкой ⚠️.</p>
+
+  <h2>Цвет и гармония</h2>
+  <ul>
+    <li>Нейтральные цвета (чёрный, белый, серый, бежевый, тёмно-синий…) — база.</li>
+    <li>Яркие «акцентные» — максимум <b>2</b> на образ, дальше — штраф.</li>
+    <li>Суммарный «цветовой бюджет» ограничен, чтобы не выходила радуга.</li>
+  </ul>
+
+  <h2>Слои: почему важно</h2>
+  <p>Верх делится на слои: <b>база</b> (футболка) → <b>средний</b> (свитер) → <b>куртка</b>.
+     Бот следит, чтобы тепло росло наружу (футболка холоднее свитера холоднее куртки)
+     и чтобы не было «куртки без футболки».</p>
+
+  <h2>Единый «скор» комбинации</h2>
+  <div class="kpi">
+    <div><b>45%</b>тепло (совпадение warmth)</div>
+    <div><b>25%</b>влагостойкость</div>
+    <div><b>15%</b>сезон</div>
+    <div><b>15%</b>материал</div>
+  </div>
+  <p>Из скоров вычитаются штрафы: за слишком много акцентов, за лишний слой в тепле,
+     за отсутствие нужного слоя в холоде, за «мокрый» образ в дождь.</p>
+
+  <h2>Разнообразие: 5 вариантов</h2>
+  <p>Из всех оценённых комбинаций берутся <b>топ-5</b>, но так, чтобы они
+     <i>различались</i> вещами (не больше 2 пересечений). Поэтому ты часто видишь
+     несколько разных образов, а не «одно и то же в другом порядке».</p>
+
+  <h2>Что если пусто?</h2>
+  <p>Если новый алгоритм не собрал ни одной комбинации, включается <b>упрощённый fallback</b>:
+     он просто берёт по одной лучшей вещи каждой категории, соблюдая тепло и стиль.
+     Если и так пусто — бот честно скажет, что не нашёл подходящего комплекта.</p>
+
+  <div class="warn note">
+    <b>Известные ограничения:</b> бот не видит «визуально» сочетаемость (цвета он знает
+    только как текстовые метки, а не как реальную палитру). Пропорции, ткани «на глаз»
+    и культурные нюансы он не оценивает — только метаданные, которые записались при
+    добавлении вещи.
+  </div>
+
+</div>
+</body>
+</html>
