@@ -135,6 +135,22 @@ def _blend_white(image: Image.Image, alpha: float = 0.65) -> bytes:
     return out.getvalue()
 
 
+def _catalog_with_semitransparent_bg(
+    image: Image.Image, mask_img: Image.Image, alpha: float = 0.65
+) -> bytes:
+    """Фон смешивается с белым, вещь остаётся непрозрачной.
+
+    Отличие от _blend_white: там белый слой «стирает» и саму вещь,
+    здесь по маске возвращаются исходные пиксели одежды.
+    """
+    white = Image.new("RGB", image.size, "white")
+    faded = Image.blend(image, white, alpha=alpha)
+    out_img = Image.composite(image, faded, mask_img.convert("L"))
+    out = BytesIO()
+    out_img.save(out, format="JPEG", quality=92)
+    return out.getvalue()
+
+
 def make_product_photo(
     image_bytes: bytes, category: str, force_overlay: bool = False
 ) -> bytes:
@@ -146,11 +162,6 @@ def make_product_photo(
         image = Image.open(BytesIO(image_bytes)).convert("RGB")
         w, h = image.size
 
-        # Принудительный белый слой (если пользователь выбрал вручную)
-        if force_overlay:
-            logger.info("force_overlay=True — белый слой")
-            return _blend_white(image)
-
         # 1. Маска SegFormer (по категории)
         mask_seg = _seg_mask(image, category)
 
@@ -158,6 +169,7 @@ def make_product_photo(
         mask_rembg = _rembg_mask(image_bytes)
 
         # 3. Комбинируем
+        final_mask = None
         if mask_seg is not None and mask_rembg is not None:
             # Пересечение: rembg-точность + границы SegFormer
             final_mask = mask_rembg & mask_seg
@@ -168,20 +180,32 @@ def make_product_photo(
             final_mask = mask_seg
         elif mask_rembg is not None:
             final_mask = mask_rembg
-        else:
-            logger.info("Ни одна маска не сработала — белый слой")
-            return _blend_white(image)
 
         # 4. Сглаживание краёв
-        mask_img = Image.fromarray((final_mask * 255).astype(np.uint8), mode="L")
-        mask_img = mask_img.filter(ImageFilter.GaussianBlur(radius=1.2))
+        mask_img = None
+        if final_mask is not None:
+            mask_img = Image.fromarray(
+                (final_mask * 255).astype(np.uint8), mode="L"
+            )
+            mask_img = mask_img.filter(ImageFilter.GaussianBlur(radius=1.2))
+
+        # Принудительный режим: фон полупрозрачный, вещь непрозрачна
+        if force_overlay:
+            logger.info("force_overlay=True — белый фон, вещь сохраняется")
+            if mask_img is not None:
+                return _catalog_with_semitransparent_bg(image, mask_img)
+            return _blend_white(image)
+
+        if mask_img is None:
+            logger.info("Ни одна маска не сработала — белый слой")
+            return _blend_white(image)
 
         # 4a. Проверяем качество вырезания
         cutout_check = Image.new("RGBA", (w, h))
         cutout_check.putalpha(mask_img)
         if _is_bad_cutout(cutout_check):
-            logger.info("Вырезание плохое (вешалка/фон) — белый слой")
-            return _blend_white(image)
+            logger.info("Вырезание плохое — полупрозрачный фон")
+            return _catalog_with_semitransparent_bg(image, mask_img)
 
         # 5. Композит на белом
         white = Image.new("RGB", (w, h), (255, 255, 255))
