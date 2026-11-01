@@ -138,16 +138,26 @@ def _blend_white(image: Image.Image, alpha: float = 0.65) -> bytes:
 def _catalog_with_semitransparent_bg(
     image: Image.Image, mask_img: Image.Image, alpha: float = 0.65
 ) -> bytes:
-    """Фон смешивается с белым, вещь остаётся непрозрачной.
+    """Фон — полупрозрачный оригинал; поверх него вещь без изменений.
 
-    Отличие от _blend_white: там белый слой «стирает» и саму вещь,
-    здесь по маске возвращаются исходные пиксели одежды.
+    Техника: берём оригинал с прозрачностью фона (alpha), сверху
+    накладываем вырезанную вещь по маске полностью непрозрачной,
+    затем всё компонуем на белом холсте.
     """
-    white = Image.new("RGB", image.size, "white")
-    faded = Image.blend(image, white, alpha=alpha)
-    out_img = Image.composite(image, faded, mask_img.convert("L"))
+    bg = image.convert("RGBA")
+    bg.putalpha(round(255 * (1 - alpha)))  # фон полупрозрачный
+
+    fg = image.convert("RGBA")
+
+    composed = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    composed.paste(bg, (0, 0))
+    composed.paste(fg, (0, 0), mask_img)  # вещь — как в оригинале
+
+    canvas = Image.new("RGB", image.size, (255, 255, 255))
+    canvas.paste(composed, (0, 0), composed)
+
     out = BytesIO()
-    out_img.save(out, format="JPEG", quality=92)
+    canvas.save(out, format="JPEG", quality=92)
     return out.getvalue()
 
 
