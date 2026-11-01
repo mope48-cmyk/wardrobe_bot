@@ -478,16 +478,17 @@ def detect_color(
     # P2.3: определяем многоцветность
     total_weight = sum(w for _, w in sorted_names)
 
-    # Чёрный — только если чёрный/тёмно-серый ДОМИНИРУЮТ в весах,
-    # насыщенных пикселей мало И нет явного цветного «ядра».
-    # Порог colored_ratio выше (0.60), чтобы не терять настоящий чёрный
-    # с бликами/маской; тёмные цветные спасаются проверкой насыщенности ниже.
+    # Чёрный:
+    #  1) если чёрный/тёмно-серый доминируют в весах;
+    #  2) ЛИБО кадр очень тёмный (avg_v низкий) при малой доле насыщенного —
+    #     это чёрный даже если тёплый оттенок в тени уводит названия цветов.
     dark_weight = sum(
         w for name, w in name_weights.items()
         if name in ("чёрный", "тёмно-серый")
     )
-    colored_ratio_now = colored_ratio
-    if colored_ratio_now < 0.60 and total_weight > 0 and (dark_weight / total_weight) > 0.55:
+    dark_share = dark_weight / total_weight if total_weight > 0 else 0.0
+    very_dark = avg_v < 0.24 and colored_ratio < 0.45
+    if (dark_share > 0.55 and colored_ratio < 0.60) or very_dark:
         # Исключение: если среди цветных пикселей доминирует один конкретный
         # насыщенный цвет (тёмно-синий, коричневый и т.п.) — оставляем его,
         # а не объявляем чёрным.
@@ -498,15 +499,15 @@ def detect_color(
             if v < 0.30:
                 continue  # слишком тёмные цветные ≈ неясные
             colored_names[_rgb_to_color_name(r, g, b)] += 1
-        if colored_names:
+        if colored_names and not very_dark:
             top_color, _ = colored_names.most_common(1)[0]
             if top_color in ("тёмно-синий", "коричневый", "тёмно-коричневый",
                              "оливковый", "синий", "зелёный", "бордовый"):
                 return top_color, [top_color, *[c for c in top3 if c != top_color][:2]], [top_color]
 
         logger.info(
-            "detect_color: dark dominance dark_w=%.2f total=%.2f colored=%.2f → чёрный",
-            dark_weight, total_weight, colored_ratio_now,
+            "detect_color: dark dominance dark_share=%.2f avg_v=%.2f colored=%.2f → чёрный",
+            dark_share, avg_v, colored_ratio,
         )
         return "чёрный", ["чёрный", "тёмно-серый", "тёмно-синий"], ["чёрный"]
 
