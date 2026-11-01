@@ -132,6 +132,7 @@ def route_condition(state: BotState) -> str:
     if text.startswith("list:cat:"): return "list_category"
     if text == "outfit:warmer": return "outfit_variant"
     if text == "outfit:lighter": return "outfit_variant"
+    if text in ("outfit:fb:like", "outfit:fb:dislike"): return "outfit_feedback"
     if text in ("add:ai:save", "add:ai:edit"): return "add_confirm_ai"
 
     # Callback'и утренней сводки
@@ -282,6 +283,7 @@ def build_graph():
     builder.add_node("outfit_location", nodes.outfit_location_node)
     builder.add_node("outfit_occasion", nodes.outfit_occasion_node)
     builder.add_node("outfit_variant", nodes.outfit_variant_node)
+    builder.add_node("outfit_feedback", nodes.outfit_feedback_node)
 
     # /dna
     builder.add_node("dna_start", nodes.dna_start_node)
@@ -356,6 +358,7 @@ def build_graph():
             "outfit_location": "outfit_location",
             "outfit_occasion": "outfit_occasion",
             "outfit_variant": "outfit_variant",
+            "outfit_feedback": "outfit_feedback",
             "dna_start": "dna_start",
             "verdict_start": "verdict_start",
             "verdict_expect_photo": "verdict_expect_photo",
@@ -402,6 +405,7 @@ def build_graph():
         "list_delete_product_photo",
         "list_edit_field", "list_edit_choice", "list_edit_save", "list_edit_cancel",
         "outfit_start", "outfit_location", "outfit_occasion", "outfit_variant",
+        "outfit_feedback",
         "dna_start",
         "verdict_start", "verdict_expect_photo", "verdict_photo",
         "add_start", "add_expect_photo", "add_photo",

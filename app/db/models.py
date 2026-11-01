@@ -1,6 +1,7 @@
 """SQLAlchemy-модели базы данных."""
 
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -148,3 +149,34 @@ class UserGamification(Base):
     verdicts_done: Mapped[int] = mapped_column(Integer, default=0)
     capsules_built: Mapped[int] = mapped_column(Integer, default=0)
     laundry_done: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class OutfitFeedback(Base):
+    """Обратная связь пользователя на выданный образ.
+
+    Заполняется кнопками «👍 отлично» / «👎 не то» под образом.
+    Служит источником данных для улучшения алгоритма подбора.
+    """
+
+    __tablename__ = "outfit_feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+
+    # Дата и время оценки (по московскому времени)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(ZoneInfo("Europe/Moscow")),
+        nullable=False,
+    )
+
+    # Вердикт: "like" / "dislike"
+    verdict: Mapped[str] = mapped_column(String(16), nullable=False)
+
+    # Повод и погода на момент выдачи образа
+    occasion: Mapped[str] = mapped_column(String(64), default="")
+    weather_main: Mapped[str] = mapped_column(String(32), default="")
+    weather_temp: Mapped[float] = mapped_column(Float, default=0.0)
+
+    # Состав образа: типы вещей в порядке (JSON-массив), напр. '["футболка","джинсы"]'
+    outfit_types: Mapped[str] = mapped_column(Text, default="[]")

@@ -168,6 +168,32 @@ def _aggregate(rows: list[dict]) -> dict:
     }
 
 
+def _feedback_stats() -> dict:
+    """Оценки образов (кнопки 👍/👎): всего, лайки, дизлайки, рейтинг."""
+    try:
+        con = sqlite3.connect(_db_path())
+        con.row_factory = sqlite3.Row
+        try:
+            likes = con.execute(
+                "SELECT COUNT(*) FROM outfit_feedback WHERE verdict='like'"
+            ).fetchone()[0]
+            dislikes = con.execute(
+                "SELECT COUNT(*) FROM outfit_feedback WHERE verdict='dislike'"
+            ).fetchone()[0]
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return {"total": 0, "likes": 0, "dislikes": 0, "match_rate": 0.0}
+
+    total = likes + dislikes
+    return {
+        "total": total,
+        "likes": likes,
+        "dislikes": dislikes,
+        "match_rate": round(likes / total, 3) if total else 0.0,
+    }
+
+
 def _sort_key(row: dict, key: str):
     value = row[key]
     return (value is None, value)
@@ -189,10 +215,12 @@ def index():
         return render_template("admin.html", error=f"Ошибка чтения БД: {exc}"), 500
 
     rows.sort(key=lambda r: _sort_key(r, key), reverse=reverse)
+    agg = _aggregate(rows)
+    agg["feedback"] = _feedback_stats()
     return render_template(
         "admin.html",
         rows=rows,
-        agg=_aggregate(rows),
+        agg=agg,
         sort=sort_by,
         order=order,
     )

@@ -50,6 +50,8 @@ def test_free_text_intent(text, expected):
         ({"input_text": "list:menu"}, "list_menu"),
         ({"input_text": "list:edit"}, "list_edit"),
         ({"input_text": "list:edit:thickness"}, "list_edit_field"),
+        ({"input_text": "outfit:fb:like"}, "outfit_feedback"),
+        ({"input_text": "outfit:fb:dislike"}, "outfit_feedback"),
     ],
 )
 def test_route_condition_callbacks(state, expected):

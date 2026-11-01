@@ -148,6 +148,8 @@ def test_panel_shows_stats_and_users(panel_db):
     assert "<b>2</b>" in html
     assert "<b>3</b>" in html
     assert "<b>375</b>" in html
+    # Карточка фидбек-а присутствует (0 оценок).
+    assert "оценок образа" in html
 
 
 def test_panel_sorting_and_cookie(panel_db):

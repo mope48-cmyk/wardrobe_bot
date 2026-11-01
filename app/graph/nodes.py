@@ -2837,6 +2837,14 @@ async def outfit_occasion_node(state: BotState) -> dict:
     if row:
         kb.append(row)
 
+    # Фидбек на образ: 👍 отлично / 👎 не то
+    kb.append(
+        [
+            {"text": "👍 отлично", "callback_data": "outfit:fb:like"},
+            {"text": "👎 не то", "callback_data": "outfit:fb:dislike"},
+        ]
+    )
+
     # --- VOGUE-КОЛЛАЖ ---
     labels = [item.type for item in best_outfit.items]
     vogue_cfg = {
@@ -2969,6 +2977,14 @@ async def outfit_variant_node(state: BotState) -> dict:
     if row:
         kb.append(row)
 
+    # Фидбек на вариант образа: 👍 отлично / 👎 не то
+    kb.append(
+        [
+            {"text": "👍 отлично", "callback_data": "outfit:fb:like"},
+            {"text": "👎 не то", "callback_data": "outfit:fb:dislike"},
+        ]
+    )
+
     # НОВАЯ КНОПКА: Поделиться образом
     kb.append(
         [
@@ -3015,6 +3031,64 @@ async def outfit_variant_node(state: BotState) -> dict:
     return {
         "messages": messages,
         "outfit_index": idx,
+    }
+
+
+# ============================================================
+# Фидбек на образ: 👍 отлично / 👎 не то
+# ============================================================
+
+
+async def outfit_feedback_node(state: BotState) -> dict:
+    """Обработка нажатия «👍 отлично» / «👎 не то» после образа."""
+    from app.services.feedback import record_outfit_feedback
+
+    text = (state.get("input_text") or "").strip()
+    verdict = "like" if text == "outfit:fb:like" else "dislike"
+
+    user_id = state.get("user_id")
+    occasion = state.get("occasion") or ""
+    weather = state.get("weather") or {}
+
+    # Состав текущего образа из сохранённых ID
+    outfit_ids = state.get("outfit_options") or []
+    idx = state.get("outfit_index") or 0
+    outfit_types: list[str] = []
+    if outfit_ids and idx < len(outfit_ids):
+        try:
+            items = await get_items(user_id)
+            items_map = {i.id: i for i in items}
+            outfit_types = [
+                items_map[i].type
+                for i in outfit_ids[idx]
+                if i in items_map
+            ]
+        except Exception:
+            logger.exception("Фидбек: не удалось получить состав образа")
+
+    await record_outfit_feedback(
+        user_id=user_id,
+        verdict=verdict,
+        occasion=occasion,
+        weather_main=weather.get("description") or weather.get("main") or "",
+        weather_temp=weather.get("temp", 0.0),
+        outfit_types=outfit_types,
+    )
+
+    reply = (
+        "Спасибо! Ваша оценка поможет мне стать точнее 🎯"
+        if verdict == "like"
+        else "Спасибо! Учту это и постараюсь подбирать лучше 🙌"
+    )
+
+    return {
+        "messages": [
+            AIMessage(
+                content=reply,
+                additional_kwargs=_kb(MENU_KEYBOARD),
+            )
+        ],
+        "step": None, "intent": None,
     }
 
 
