@@ -41,6 +41,16 @@ def test_parse_filename_short_rejected():
     assert parse_filename("whatever.jpg") is None
 
 
+def test_canon_color():
+    from tools.eval_recognition import canon_color
+
+    assert canon_color("черный") == "чёрный"
+    assert canon_color("чёрный") == "чёрный"
+    assert canon_color("темно-синий") == "тёмно-синий"
+    assert canon_color("голубые") == "голубой"
+    assert canon_color("синий") == "синий"
+
+
 def test_collect_labels_uses_manifest(tmp_path):
     """При наличии manifest.csv метки берутся из него, а не из имени файла."""
     from tools.eval_recognition import collect_labels

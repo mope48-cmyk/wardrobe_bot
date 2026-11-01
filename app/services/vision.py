@@ -371,7 +371,7 @@ def _rgb_to_color_name(r: int, g: int, b: int) -> str:
 
 
 def detect_color(
-    image_bytes: bytes, mask: np.ndarray | None = None
+    image_bytes: bytes, mask: np.ndarray | None = None, _diag: dict | None = None
 ) -> tuple[str, list[str], list[str]]:
     """Определить цвета вещи.
 
@@ -380,6 +380,9 @@ def detect_color(
       - top3 (list[str]): до 3 цветов по убыванию веса.
       - detected_colors (list[str]): 1–3 «основных» цвета; если 2–3 —
         вещь считается многоцветной.
+
+    Если передан _diag (dict) — заполняет его диагностикой для оценки:
+    mask_on, dark_ratio, colored_ratio, avg_v.
     """
     img = Image.open(BytesIO(image_bytes)).convert("RGB")
     img.thumbnail((200, 200))
@@ -485,6 +488,14 @@ def detect_color(
         colored_ratio, dark_ratio,
         primary, top3, detected_colors,
     )
+    if _diag is not None:
+        _diag.update({
+            "mask_on": mask_resized is not None,
+            "pixels": len(pixels),
+            "colored_ratio": round(colored_ratio, 3),
+            "dark_ratio": round(dark_ratio, 3),
+            "avg_v": round(avg_v, 3),
+        })
     return primary, top3, detected_colors
 
 
@@ -607,8 +618,9 @@ async def classify_clothing(image_bytes: bytes) -> dict:
     cropped_bytes, mask = crop_garment(image_bytes)
 
     # 2. Цвет — с учётом маски (только пиксели вещи)
+    _diag: dict = {}
     color_primary, color_candidates, detected_colors = detect_color(
-        cropped_bytes, mask=mask
+        cropped_bytes, mask=mask, _diag=_diag
     )
 
     try:
@@ -620,6 +632,7 @@ async def classify_clothing(image_bytes: bytes) -> dict:
             "color": color_primary,
             "color_candidates": color_candidates,
             "detected_colors": detected_colors,
+            "diagnostics": _diag,
         }
 
     try:
@@ -631,6 +644,7 @@ async def classify_clothing(image_bytes: bytes) -> dict:
             "color": color_primary,
             "color_candidates": color_candidates,
             "detected_colors": detected_colors,
+            "diagnostics": _diag,
         }
 
     if not options or options[0]["confidence"] < SIGLIP_THRESHOLD:
@@ -644,6 +658,7 @@ async def classify_clothing(image_bytes: bytes) -> dict:
             "color": color_primary,
             "color_candidates": color_candidates,
             "detected_colors": detected_colors,
+            "diagnostics": _diag,
         }
 
     top = options[0]
@@ -667,4 +682,5 @@ async def classify_clothing(image_bytes: bytes) -> dict:
         "season": top["season"],
         "layer": top["layer"],
         "options": options,
+        "diagnostics": _diag,
     }

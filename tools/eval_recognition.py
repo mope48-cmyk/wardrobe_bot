@@ -45,6 +45,21 @@ TYPE_ALIASES = {
     "ботильоны": "ботинки/ботильоны",
 }
 
+# Канонические формы цветов: разные написания одной сущности.
+# Ключи — уже нормализованные (без ё, нижний регистр).
+CANON_COLOR_MAP = {
+    "черный": "чёрный",
+    "темно-синий": "тёмно-синий",
+    "голубые": "голубой",
+    "голубая": "голубой",
+    "светло-серый": "светло-серый",
+    "тёмно-коричневый": "тёмно-коричневый",
+}
+
+
+def canon_color(s: str) -> str:
+    return CANON_COLOR_MAP.get(_norm(s), _norm(s))
+
 
 def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", s.strip().lower()).replace("ё", "е")
@@ -132,12 +147,14 @@ async def evaluate(folder: Path) -> dict:
     cat_correct = cat_total = 0
     type_correct = type_total = 0
     color_correct = color_total = 0
+    color3_correct = 0
     rows = []
     cat_cm: dict[str, dict[str, int]] = {}
     type_cm: dict[str, dict[str, int]] = {}
 
     for path, label in zip(files, labels, strict=False):
         pred = await classify_one(path)
+        diag = pred.get("diagnostics") or {}
         row = {
             "file": path.name,
             "gt_category": label["category"],
@@ -147,7 +164,12 @@ async def evaluate(folder: Path) -> dict:
             "pred_category": pred.get("category", ""),
             "pred_type": pred.get("type", ""),
             "pred_color": pred.get("color", ""),
+            "pred_detected": "|".join(pred.get("detected_colors") or []),
             "confidence": round(float(pred.get("confidence", 0.0)), 4),
+            "mask_on": diag.get("mask_on", ""),
+            "dark_ratio": diag.get("dark_ratio", ""),
+            "colored_ratio": diag.get("colored_ratio", ""),
+            "avg_v": diag.get("avg_v", ""),
         }
         rows.append(row)
 
@@ -172,17 +194,27 @@ async def evaluate(folder: Path) -> dict:
         )
         type_cm[label["type"]][pred.get("type") or "—"] += 1
 
-        # Цвет (только где есть gt)
+        # Цвет (только где есть gt): топ-1 (канонизир.) и топ-3
         if label["color"]:
             color_total += 1
-            color_hit = _norm(pred.get("color", "")) == _norm(label["color"])
+            color_hit = canon_color(pred.get("color", "")) == canon_color(label["color"])
             color_correct += int(color_hit)
+
+            detected = pred.get("detected_colors") or []
+            top3_hit = any(
+                canon_color(c) == canon_color(label["color"]) for c in detected
+            )
+            color3_correct += int(top3_hit)
+            row["color_top3_hit"] = top3_hit
+        else:
+            row["color_top3_hit"] = ""
 
     return {
         "total": len(files),
         "cat_acc": cat_correct / cat_total if cat_total else 0.0,
         "type_acc": type_correct / type_total if type_total else 0.0,
         "color_acc": color_correct / color_total if color_total else 0.0,
+        "color3_acc": color3_correct / color_total if color_total else 0.0,
         "color_labeled": color_total,
         "rows": rows,
         "cat_cm": cat_cm,
@@ -196,8 +228,12 @@ def print_report(res: dict) -> None:
     print(f"Точность категории:  {res['cat_acc']*100:.1f}%")
     print(f"Точность типа:       {res['type_acc']*100:.1f}%")
     print(
-        f"Точность цвета:       {res['color_acc']*100:.1f}% "
+        f"Точность цвета (топ-1): {res['color_acc']*100:.1f}% "
         f"(на {res['color_labeled']} фото с меткой цвета)"
+    )
+    print(
+        f"Точность цвета (топ-3): {res['color3_acc']*100:.1f}% "
+        f"(GT есть среди detected_colors)"
     )
     print("=" * 60)
 
