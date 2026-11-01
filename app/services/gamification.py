@@ -19,7 +19,6 @@ from app.db.models import UserGamification
 logger = logging.getLogger(__name__)
 
 MSC = ZoneInfo("Europe/Moscow")
-
 # ---------------------------------------------------------------------------
 # Уровни (XP = 100 * level^1.5, уровень стартует с 1)
 # ---------------------------------------------------------------------------
@@ -260,9 +259,34 @@ async def get_or_create_gam(user_id: int) -> UserGamification:
             gam.capsules_built = 0
             gam.laundry_done = 0
             session.add(gam)
-            await session.commit()
-            await session.refresh(gam)
+        await _sync_existing_items(session, gam)
+        await session.commit()
+        await session.refresh(gam)
         return gam
+
+
+async def _sync_existing_items(session, gam: UserGamification) -> None:
+    """Синхронизировать счётчик добавленных вещей с фактической БД.
+
+    Счётчики геймификации копятся с момента деплоя фичи. У пользователей,
+    у которых вещи уже были в гардеробе на тот момент, items_added = 0,
+    хотя реально вещей может быть много. Здесь мы доводим счётчик до
+    фактического числа вещей в БД и начисляем XP за «пропущенные» вещи.
+    """
+    from app.db.repository import count_items
+
+    try:
+        actual = await count_items(gam.user_id)
+    except Exception:
+        logger.exception("Не удалось посчитать вещи для геймификации")
+        return
+
+    current = gam.items_added or 0
+    if actual > current:
+        diff = actual - current
+        gam.items_added = actual
+        gam.xp = (gam.xp or 0) + diff * EVENT_XP["item_added"]
+        _check_achievements(gam)
 
 
 async def record_event(
