@@ -1,0 +1,230 @@
+"""Оценка распознавания одежды на датасете с метками в именах файлов.
+
+Имя файла:  NN_Категория_Тип_Цвет[_доп].jpg
+Пример:      05_Верх_рубашка_синий_на_белом.jpg
+
+Запуски:
+    # 1. Локально, без моделей — только проверить парсинг имён:
+    python tools/eval_recognition.py <папка> --dry-run
+
+    # 2. Полный прогон на сервере (там стоят модели) внутри контейнера:
+    docker compose exec bot python tools/eval_recognition.py /app/dataset_clothes_images
+"""
+
+import argparse
+import asyncio
+import csv
+import logging
+import re
+import sys
+from pathlib import Path
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+logger = logging.getLogger("eval_recognition")
+
+CAT_MAP = {
+    "верх": "верх",
+    "низ": "низ",
+    "обувь": "обувь",
+    "аксессуары": "аксессуар",
+    "аксессуар": "аксессуар",
+}
+
+# Синонимичные группы типов: совпадение внутри группы считается верным.
+TYPE_ALIASES = {
+    "толстовка": "толстовка/свитшот/худи",
+    "свитшот": "толстовка/свитшот/худи",
+    "худи": "толстовка/свитшот/худи",
+    "пиджак": "пиджак/блейзер",
+    "блейзер": "пиджак/блейзер",
+    "ботинки": "ботинки/ботильоны",
+    "ботильоны": "ботинки/ботильоны",
+}
+
+
+def _norm(s: str) -> str:
+    return re.sub(r"\s+", " ", s.strip().lower()).replace("ё", "е")
+
+
+def parse_filename(name: str) -> dict | None:
+    """Разобрать имя файла в {category, type, color}."""
+    stem = Path(name).stem
+    parts = [p for p in stem.split("_") if p]
+    if len(parts) < 3:
+        return None
+
+    category = CAT_MAP.get(_norm(parts[1]))
+    if not category:
+        return None
+
+    item_type = _norm(parts[2])
+    color = None
+    color_raw = parts[3].lower() if len(parts) >= 4 else ""
+    if color_raw and not color_raw.startswith("не") and not color_raw.startswith("на"):
+        color = color_raw
+
+    return {"category": category, "type": item_type, "color": color}
+
+
+def type_group(t: str) -> str:
+    return TYPE_ALIASES.get(t, t)
+
+
+def collect_labels(folder: Path) -> tuple[list[Path], list[dict]]:
+    files, labels = [], []
+    for p in sorted(folder.iterdir()):
+        if not p.is_file() or p.suffix.lower() not in (".jpg", ".jpeg", ".png", ".webp"):
+            continue
+        label = parse_filename(p.name)
+        if label is None:
+            logger.warning("Пропуск (не парсится): %s", p.name)
+            continue
+        files.append(p)
+        labels.append(label)
+    return files, labels
+
+
+async def classify_one(path: Path) -> dict:
+    from app.services.vision import classify_clothing
+
+    data = await classify_clothing(path.read_bytes())
+    return data
+
+
+async def evaluate(folder: Path) -> dict:
+    files, labels = collect_labels(folder)
+    if not files:
+        logger.error("Нет распознаваемых файлов в %s", folder)
+        sys.exit(1)
+
+    cat_correct = cat_total = 0
+    type_correct = type_total = 0
+    color_correct = color_total = 0
+    rows = []
+    cat_cm: dict[str, dict[str, int]] = {}
+    type_cm: dict[str, dict[str, int]] = {}
+
+    for path, label in zip(files, labels, strict=False):
+        pred = await classify_one(path)
+        row = {
+            "file": path.name,
+            "gt_category": label["category"],
+            "gt_type": label["type"],
+            "gt_color": label["color"] or "",
+            "pred_ok": pred.get("ok", False),
+            "pred_category": pred.get("category", ""),
+            "pred_type": pred.get("type", ""),
+            "pred_color": pred.get("color", ""),
+            "confidence": round(float(pred.get("confidence", 0.0)), 4),
+        }
+        rows.append(row)
+
+        # Категория
+        cat_total += 1
+        hit = pred.get("ok") and pred.get("category") == label["category"]
+        cat_correct += int(hit)
+        cat_cm.setdefault(label["category"], {}).setdefault(
+            pred.get("category") or "—", 0
+        )
+        cat_cm[label["category"]][pred.get("category") or "—"] += 1
+
+        # Тип (с синонимичными группами)
+        type_total += 1
+        type_hit = (
+            pred.get("ok")
+            and type_group(pred.get("type", "")) == type_group(label["type"])
+        )
+        type_correct += int(type_hit)
+        type_cm.setdefault(label["type"], {}).setdefault(
+            pred.get("type") or "—", 0
+        )
+        type_cm[label["type"]][pred.get("type") or "—"] += 1
+
+        # Цвет (только где есть gt)
+        if label["color"]:
+            color_total += 1
+            color_hit = _norm(pred.get("color", "")) == _norm(label["color"])
+            color_correct += int(color_hit)
+
+    return {
+        "total": len(files),
+        "cat_acc": cat_correct / cat_total if cat_total else 0.0,
+        "type_acc": type_correct / type_total if type_total else 0.0,
+        "color_acc": color_correct / color_total if color_total else 0.0,
+        "color_labeled": color_total,
+        "rows": rows,
+        "cat_cm": cat_cm,
+        "type_cm": type_cm,
+    }
+
+
+def print_report(res: dict) -> None:
+    print("\n" + "=" * 60)
+    print(f"Файлов: {res['total']}")
+    print(f"Точность категории:  {res['cat_acc']*100:.1f}%")
+    print(f"Точность типа:       {res['type_acc']*100:.1f}%")
+    print(
+        f"Точность цвета:       {res['color_acc']*100:.1f}% "
+        f"(на {res['color_labeled']} фото с меткой цвета)"
+    )
+    print("=" * 60)
+
+    print("\nСамые частые ошибки категории (gt → предсказание):")
+    counts: dict[tuple[str, str], int] = {}
+    for gt, m in res["cat_cm"].items():
+        for pred, n in m.items():
+            if pred != gt:
+                counts[(gt, pred)] = n
+    for (gt, pred), n in sorted(counts.items(), key=lambda x: -x[1])[:8]:
+        print(f"  {gt} → {pred}: {n}")
+
+    print("\nСамые частые ошибки типа (gt → предсказание):")
+    counts = {}
+    for gt, m in res["type_cm"].items():
+        for pred, n in m.items():
+            if type_group(pred) != type_group(gt):
+                counts[(gt, pred)] = n
+    for (gt, pred), n in sorted(counts.items(), key=lambda x: -x[1])[:10]:
+        print(f"  {gt} → {pred}: {n}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("folder", type=Path)
+    parser.add_argument("--dry-run", action="store_true",
+                        help="только парсинг имён, без моделей")
+    parser.add_argument("--csv", type=Path, default=None,
+                        help="сохранить построчные результаты в CSV")
+    args = parser.parse_args()
+
+    if not args.folder.is_dir():
+        logger.error("Папка не найдена: %s", args.folder)
+        sys.exit(1)
+
+    files, labels = collect_labels(args.folder)
+    print(f"Разобрано имён: {len(files)}")
+    print(
+        "Файлов с меткой цвета: "
+        f"{sum(1 for lbl in labels if lbl['color'])}"
+    )
+
+    if args.dry_run:
+        print("\nПримеры распарсенных меток:")
+        for p, lbl in zip(files[:10], labels[:10], strict=False):
+            print(f"  {p.name}: {lbl}")
+        print("\n--dry-run завершён (модели не запускались).")
+        return
+
+    res = asyncio.run(evaluate(args.folder))
+    print_report(res)
+
+    if args.csv:
+        with open(args.csv, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=list(res["rows"][0].keys()))
+            writer.writeheader()
+            writer.writerows(res["rows"])
+        print(f"\nПострочные результаты: {args.csv}")
+
+
+if __name__ == "__main__":
+    main()
