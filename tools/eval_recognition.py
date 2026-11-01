@@ -74,15 +74,43 @@ def type_group(t: str) -> str:
     return TYPE_ALIASES.get(t, t)
 
 
+def load_manifest(folder: Path) -> dict[str, dict] | None:
+    """Если рядом есть manifest.csv — берём метки оттуда (полные).
+
+    Колонки: file, category, type, color. Файлы в манифесте имеют
+    приоритет над парсингом имён.
+    """
+    mf = folder / "manifest.csv"
+    if not mf.exists():
+        return None
+    import csv as _csv
+
+    with open(mf, newline="", encoding="utf-8") as f:
+        rows = list(_csv.DictReader(f))
+    return {
+        r["file"]: {
+            "category": (r["category"] or "").strip().lower(),
+            "type": (r["type"] or "").strip(),
+            "color": ((r.get("color") or "").strip() or None),
+        }
+        for r in rows
+    }
+
+
 def collect_labels(folder: Path) -> tuple[list[Path], list[dict]]:
+    manifest = load_manifest(folder)
     files, labels = [], []
     for p in sorted(folder.iterdir()):
         if not p.is_file() or p.suffix.lower() not in (".jpg", ".jpeg", ".png", ".webp"):
             continue
-        label = parse_filename(p.name)
+        label = (manifest or {}).get(p.name)
+        if label is None and manifest is not None:
+            continue  # есть манифест — файл вне его не оцениваем
         if label is None:
-            logger.warning("Пропуск (не парсится): %s", p.name)
-            continue
+            label = parse_filename(p.name)
+            if label is None:
+                logger.warning("Пропуск (не парсится): %s", p.name)
+                continue
         files.append(p)
         labels.append(label)
     return files, labels

@@ -39,3 +39,32 @@ def test_parse_filename_accessories():
 def test_parse_filename_short_rejected():
     assert parse_filename("01_Верх.jpg") is None
     assert parse_filename("whatever.jpg") is None
+
+
+def test_collect_labels_uses_manifest(tmp_path):
+    """При наличии manifest.csv метки берутся из него, а не из имени файла."""
+    from tools.eval_recognition import collect_labels
+
+    folder = tmp_path / "ds"
+    folder.mkdir()
+    (folder / "0005.jpg").write_bytes(b"x")
+    (folder / "0006.jpg").write_bytes(b"x")
+    (folder / "manifest.csv").write_text(
+        "file,category,type,color\n"
+        "0005.jpg,обувь,ботинки,тёмно-коричневый\n"
+        "0006.jpg,верх,толстовка с капюшоном,синий\n",
+        encoding="utf-8",
+    )
+
+    files, labels = collect_labels(folder)
+
+    assert len(files) == 2
+    assert labels[0] == {
+        "category": "обувь",
+        "type": "ботинки",
+        "color": "тёмно-коричневый",
+    }
+    # Многословный тип сохраняется целиком
+    assert labels[1]["type"] == "толстовка с капюшоном"
+    assert labels[1]["color"] == "синий"
+
