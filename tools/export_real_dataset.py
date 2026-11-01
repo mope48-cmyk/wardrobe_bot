@@ -12,7 +12,12 @@ import asyncio
 import csv
 import json
 import logging
+import sys
 from pathlib import Path
+
+# Корень проекта (родитель tools/) — чтобы работал `import app.*`
+# при запуске как `python tools/export_real_dataset.py`.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger("export_real_dataset")
