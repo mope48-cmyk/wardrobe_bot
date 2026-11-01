@@ -11,7 +11,7 @@ from app.services.llm_stylist import generate_vasiliev_comment
 from app.services.outfit import select_outfit
 from app.services.telegram_files import download_photo_by_file_id
 from app.services.vogue_cover import build_collage
-from app.services.weather import get_weather
+from app.services.weather import FALLBACK_WEATHER, get_weather
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +21,12 @@ async def send_morning_push(bot: Bot, chat_id: int, settings) -> None:
     logger.info(f"Начинаем сборку утреннего образа для {chat_id}")
 
     weather = await get_weather(settings.lat, settings.lon)
-    if not weather:
-        logger.error(f"Утренний пуш: нет погоды для {chat_id}")
-        return
+    weather_fallback = weather is None
+    if weather_fallback:
+        logger.warning(
+            f"Утренний пуш: погода недоступна для {chat_id}, использую нейтральную"
+        )
+        weather = FALLBACK_WEATHER
 
     items = await get_items(chat_id)
     if not items:
@@ -37,9 +40,14 @@ async def send_morning_push(bot: Bot, chat_id: int, settings) -> None:
 
     best_outfit = outfits[0]
     city_name = settings.city or "вашем городе"
-    temp = weather["temp"]
 
-    weather_line = f"🌤 <b>Погода:</b> {weather['description']}, {temp:.0f}°C"
+    if weather_fallback:
+        weather_line = "⛅ <b>Погода:</b> временно недоступна"
+        collage_weather = ""
+    else:
+        temp = weather["temp"]
+        weather_line = f"🌤 <b>Погода:</b> {weather['description']}, {temp:.0f}°C"
+        collage_weather = f"{weather['description']}, {temp:.0f}°C"
     comment = await generate_vasiliev_comment(
         weather,
         city_name,
@@ -80,7 +88,7 @@ async def send_morning_push(bot: Bot, chat_id: int, settings) -> None:
             photos=photos,
             labels=[i.type for i in best_outfit.items],
             city=settings.city or "",
-            weather_str=f"{weather['description']}, {temp:.0f}°C",
+            weather_str=collage_weather,
             date_str=datetime.now().strftime("%d.%m.%Y"),
         )
 

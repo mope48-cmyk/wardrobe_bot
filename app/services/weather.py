@@ -24,6 +24,17 @@ _TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 # Попыток с ретраем на транспортные ошибки (итого = _MAX_ATTEMPTS раз).
 _MAX_ATTEMPTS = 3
 
+# Нейтральная погода для деградации, когда API недоступен: образ собирается
+# по сезону/умолчанию, а пользователь не остаётся без ответа.
+FALLBACK_WEATHER = {
+    "temp": 10.0,
+    "feels_like": 10.0,
+    "description": "неизвестна",
+    "main": "Clouds",
+    "wind_speed": 0.0,
+    "has_precipitation": False,
+}
+
 # Коды погоды WMO → (короткий код, русское описание)
 _WMO = {
     0: ("Clear", "ясно"),
@@ -149,3 +160,16 @@ async def get_weather(lat: float, lon: float) -> dict | None:
     if not data:
         return None
     return map_forecast(data)
+
+
+async def get_weather_or_fallback(lat: float, lon: float) -> tuple[dict, bool]:
+    """Погода или нейтральный фолбэк.
+
+    Возвращает (weather, was_fallback): при сбое API подставляется
+    FALLBACK_WEATHER, чтобы вызовы не обрывались и пользователь оставался
+    с ответом.
+    """
+    weather = await get_weather(lat, lon)
+    if weather is None:
+        return FALLBACK_WEATHER, True
+    return weather, False

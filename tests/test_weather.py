@@ -4,7 +4,9 @@ import httpx
 import pytest
 
 from app.services.weather import (
+    FALLBACK_WEATHER,
     get_weather,
+    get_weather_or_fallback,
     map_forecast,
     map_geocode_entry,
     map_weather_code,
@@ -130,3 +132,29 @@ async def test_get_weather_gives_up_after_max_attempts(monkeypatch, caplog):
 
     assert weather is None
     assert "недоступен после 3 попыток" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_get_weather_or_fallback_returns_fallback(monkeypatch):
+    async def _none(*a, **k):
+        return None
+
+    monkeypatch.setattr("app.services.weather.get_weather", _none)
+
+    weather, was_fallback = await get_weather_or_fallback(48.85, 2.35)
+
+    assert was_fallback is True
+    assert weather is FALLBACK_WEATHER
+
+
+@pytest.mark.asyncio
+async def test_get_weather_or_fallback_passthrough(monkeypatch):
+    async def _some(*a, **k):
+        return {"temp": 5.0}
+
+    monkeypatch.setattr("app.services.weather.get_weather", _some)
+
+    weather, was_fallback = await get_weather_or_fallback(48.85, 2.35)
+
+    assert was_fallback is False
+    assert weather["temp"] == 5.0

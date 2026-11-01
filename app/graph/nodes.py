@@ -25,7 +25,7 @@ from app.services.product_photo_bg import (
 )
 from app.services.vision import classify_clothing
 from app.services.vision_gigachat import analyze_clothing_with_gigachat
-from app.services.weather import geocode_city, get_weather
+from app.services.weather import geocode_city, get_weather_or_fallback
 
 logger = logging.getLogger(__name__)
 
@@ -2710,20 +2710,9 @@ async def outfit_occasion_node(state: BotState) -> dict:
             "step": None, "intent": None,
         }
 
-    weather = await get_weather(loc["lat"], loc["lon"])
-    if not weather:
-        return {
-            "messages": [
-                AIMessage(
-                    content=(
-                        "Не удалось получить погоду. "
-                        "Попробуйте позже или начните заново: /outfit."
-                    ),
-                    additional_kwargs=_kb(MENU_KEYBOARD),
-                )
-            ],
-            "step": None, "intent": None, "location": None,
-        }
+    weather, weather_fallback = await get_weather_or_fallback(
+        loc["lat"], loc["lon"]
+    )
 
     items = await get_items(state["user_id"])
     if not items:
@@ -2775,15 +2764,21 @@ async def outfit_occasion_node(state: BotState) -> dict:
 
     # Формируем заголовок
     city_str = f" ({loc['city']})" if loc.get("city") else ""
-    temp = weather["temp"]
-    feels_like = weather.get("feels_like", temp)
-    wind = weather.get("wind_speed", 0)
 
-    weather_line = f"🌤 <b>Погода{esc(city_str)}</b>: {weather['description']}, {temp:.0f}°C"
-    if abs(feels_like - temp) >= 2:
-        weather_line += f" (ощущается как {feels_like:.0f}°C)"
-    if wind > 3:
-        weather_line += f", ветер {wind:.0f} м/с"
+    if weather_fallback:
+        weather_line = ""
+    else:
+        temp = weather["temp"]
+        feels_like = weather.get("feels_like", temp)
+        wind = weather.get("wind_speed", 0)
+        weather_line = (
+            f"🌤 <b>Погода{esc(city_str)}</b>: "
+            f"{weather['description']}, {temp:.0f}°C"
+        )
+        if abs(feels_like - temp) >= 2:
+            weather_line += f" (ощущается как {feels_like:.0f}°C)"
+        if wind > 3:
+            weather_line += f", ветер {wind:.0f} м/с"
 
     # Генерируем комментарий Васильева с учётом флагов плохого стиля
     comment = await generate_vasiliev_comment(
@@ -2795,7 +2790,12 @@ async def outfit_occasion_node(state: BotState) -> dict:
         comment = "Ах, дорогие мои! Этот образ — просто спасение!"
 
     # Собираем текст
-    lines = [f"{weather_line}\n<b>Повод:</b> {text}\n\n💬 <i>{esc(comment)}</i>\n"]
+    lines = []
+    if weather_fallback:
+        lines.append("⛅ Погода временно недоступна — образ подобран по сезону.")
+    else:
+        lines.append(weather_line)
+    lines.append(f"<b>Повод:</b> {text}\n\n💬 <i>{esc(comment)}</i>\n")
     relaxed_cats = set(best_outfit.relaxed_categories)
 
     by_cat = {}
@@ -2843,7 +2843,9 @@ async def outfit_occasion_node(state: BotState) -> dict:
         "photo_file_ids": photo_ids,
         "labels": labels,
         "city": city_display,
-        "weather_str": _format_weather_for_collage(weather),
+        "weather_str": _format_weather_for_collage(
+            None if weather_fallback else weather
+        ),
         "date_str": datetime.now().strftime("%d.%m.%Y"),
     }
 
