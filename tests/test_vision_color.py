@@ -51,6 +51,22 @@ def test_true_beige_stays_beige():
     assert primary == "бежевый", primary
 
 
+def test_blue_with_shadows_stays_blue():
+    # «Джинсы в тени»: 55% синего + 45% почти чёрных теней.
+    # Чёрный не должен побеждать — доминирует синий.
+    px = ([(40, 90, 180)] * 880) + ([(8, 8, 10)] * 720)
+    primary, _, detected = detect_color(_image_from_pixels(px))
+    assert primary == "синий", primary
+    assert "чёрный" not in detected
+
+
+def test_dark_denim_stays_dark_blue():
+    # Тёмные джинсы (насыщенный тёмно-синий) — не чёрный.
+    px = [(18, 25, 90)] * (40 * 40)
+    primary, _, _detected = detect_color(_image_from_pixels(px))
+    assert primary in ("синий", "тёмно-синий"), primary
+
+
 def test_rgb_to_color_name_achromatic_threshold():
     # Ниже порога s<16 — серый, а не бежевый
     assert _rgb_to_color_name(190, 185, 175) == "светло-серый"

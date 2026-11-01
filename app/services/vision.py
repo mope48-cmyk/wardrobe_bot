@@ -413,16 +413,24 @@ def detect_color(
             pixels = list(img.getdata())
             mask_resized = None
 
+    # Отсекаем тени и блики (экстремально тёмные/светлые пиксели) —
+    # они ломают определение цвета.
+    core_pixels = [
+        p
+        for p in pixels
+        if 0.10 <= colorsys.rgb_to_hsv(p[0] / 255, p[1] / 255, p[2] / 255)[2] <= 0.95
+    ]
+    if len(core_pixels) >= 100:
+        pixels = core_pixels
+
     # P2.4: усиленная проверка на чёрный (в одном проходе считаем и цветные пиксели)
     dark_neutral = 0
     total_v = 0.0
-    total_s = 0.0
     colored_pixels = []
     for p in pixels:
         r, g, b = p
         hh, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
         total_v += v
-        total_s += s
         if v < 0.28 and s < 0.35:
             dark_neutral += 1
         h_deg = hh * 360
@@ -437,7 +445,6 @@ def detect_color(
 
     dark_ratio = dark_neutral / len(pixels)
     avg_v = total_v / len(pixels)
-    avg_s = total_s / len(pixels)
     colored_ratio = len(colored_pixels) / len(pixels)
 
     # Диагностика — заполняем ДО любых ранних возвратов
@@ -450,16 +457,6 @@ def detect_color(
             "avg_v": round(avg_v, 3),
         })
 
-    # Чёрный — только если реально тёмное И ненасыщенное.
-    # Тёмно-синий/коричневый (насыщенные) уходят в обычную ветку.
-    if (dark_ratio > 0.30 and avg_s < 0.35) or (
-        dark_ratio > 0.20 and avg_v < 0.24 and avg_s < 0.30
-    ):
-        logger.info(
-            "detect_color: dark_ratio=%.2f avg_v=%.2f avg_s=%.2f → чёрный",
-            dark_ratio, avg_v, avg_s,
-        )
-        return "чёрный", ["чёрный", "тёмно-серый", "тёмно-синий"], ["чёрный"]
     source_pixels = colored_pixels if colored_ratio >= 0.15 else pixels
 
     name_weights: dict[str, float] = {}
@@ -479,6 +476,21 @@ def detect_color(
 
     # P2.3: определяем многоцветность
     total_weight = sum(w for _, w in sorted_names)
+
+    # Чёрный — только если чёрный/тёмно-серый ДОМИНИРУЮТ в весах
+    # И насыщенных пикселей мало. Тени отсечены выше, поэтому простая
+    # доля тёмного больше не решает.
+    dark_weight = sum(
+        w for name, w in name_weights.items()
+        if name in ("чёрный", "тёмно-серый")
+    )
+    if colored_ratio < 0.45 and total_weight > 0 and (dark_weight / total_weight) > 0.55:
+        logger.info(
+            "detect_color: dark dominance dark_w=%.2f total=%.2f colored=%.2f → чёрный",
+            dark_weight, total_weight, colored_ratio,
+        )
+        return "чёрный", ["чёрный", "тёмно-серый", "тёмно-синий"], ["чёрный"]
+
     detected_colors = [primary]
     seen_groups = {_color_group(primary)}
     for name, weight in sorted_names[1:]:
