@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Панель владельца — вход</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #12141a; color: #e6e6ea;
+           display: flex; height: 100vh; align-items: center; justify-content: center; }
+    form { background: #1c1f27; padding: 32px; border-radius: 12px; width: 280px; }
+    input { width: 100%; box-sizing: border-box; padding: 10px; margin-top: 8px;
+            border-radius: 8px; border: 1px solid #333; background: #252833; color: #fff; }
+    button { width: 100%; padding: 10px; margin-top: 16px; border: 0; border-radius: 8px;
+             background: #4f6ef7; color: #fff; font-size: 15px; cursor: pointer; }
+    label { font-size: 14px; color: #9aa0b4; }
+  </style>
+</head>
+<body>
+  <form method="get" action="/">
+    <label for="key">Ключ доступа (ADMIN_TOKEN)</label>
+    <input id="key" name="key" type="password" required autofocus>
+    <button type="submit">Войти</button>
+  </form>
+</body>
+</html>

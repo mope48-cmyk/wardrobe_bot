@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Панель владельца</title>
+  <style>
+    :root { --bg: #12141a; --card: #1c1f27; --line: #2a2e3a;
+            --text: #e6e6ea; --muted: #9aa0b4; --accent: #4f6ef7; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text);
+           font-family: system-ui, sans-serif; padding: 24px; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+    .cards { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+            padding: 14px 18px; min-width: 130px; }
+    .card b { display: block; font-size: 24px; }
+    .card span { color: var(--muted); font-size: 12px; }
+    .table-wrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line);
+                  border-radius: 10px; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th, td { padding: 8px 10px; text-align: right; white-space: nowrap; }
+    th:first-child, td:first-child { text-align: left; }
+    th { color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--line);
+         background: #20232c; position: sticky; top: 0; }
+    th a { color: var(--muted); text-decoration: none; }
+    th a:hover { color: var(--accent); }
+    tr:nth-child(even) { background: #191c24; }
+    .yes { color: #56d364; }
+    .no { color: #b45a5a; }
+    .err { background: #3a2020; border: 1px solid #7a3a3a; color: #ffb3b3;
+           padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <h1>🎩 Панель владельца — «Мой гардероб»</h1>
+  <div class="sub">Данные только для чтения из SQLite (обновляются при каждой перезагрузке страницы)</div>
+
+  {% if error %}<div class="err">{{ error }}</div>{% endif %}
+
+  <div class="cards">
+    <div class="card"><b>{{ agg.users }}</b><span>пользователей</span></div>
+    <div class="card"><b>{{ agg.items }}</b><span>вещей всего</span></div>
+    <div class="card"><b>{{ agg.active_today }}</b><span>активны сегодня</span></div>
+    <div class="card"><b>{{ agg.morning_enabled }}</b><span>включили утро</span></div>
+    <div class="card"><b>{{ agg.outfits }}</b><span>образов</span></div>
+    <div class="card"><b>{{ agg.verdicts }}</b><span>приговоров</span></div>
+    <div class="card"><b>{{ agg.capsules }}</b><span>капсул</span></div>
+    <div class="card"><b>{{ agg.laundry }}</b><span>стирок</span></div>
+    <div class="card"><b>{{ agg.xp }}</b><span>всего XP</span></div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th><a href="?sort=user_id&order={% if sort == 'user_id' and order == 'asc' %}desc{% else %}asc{% endif %}">ID</a></th>
+          <th><a href="?sort=items&order={% if sort == 'items' and order == 'asc' %}desc{% else %}asc{% endif %}">Вещей</a></th>
+          <th>В стирке</th>
+          <th><a href="?sort=outfits&order={% if sort == 'outfits' and order == 'asc' %}desc{% else %}asc{% endif %}">Образы</a></th>
+          <th><a href="?sort=verdicts&order={% if sort == 'verdicts' and order == 'asc' %}desc{% else %}asc{% endif %}">Приговоры</a></th>
+          <th><a href="?sort=capsules&order={% if sort == 'capsules' and order == 'asc' %}desc{% else %}asc{% endif %}">Капсулы</a></th>
+          <th><a href="?sort=laundry&order={% if sort == 'laundry' and order == 'asc' %}desc{% else %}asc{% endif %}">Стирки</a></th>
+          <th><a href="?sort=xp&order={% if sort == 'xp' and order == 'asc' %}desc{% else %}asc{% endif %}">XP</a></th>
+          <th>Уровень</th>
+          <th><a href="?sort=streak&order={% if sort == 'streak' and order == 'asc' %}desc{% else %}asc{% endif %}">Серия</a></th>
+          <th><a href="?sort=last_active&order={% if sort == 'last_active' and order == 'asc' %}desc{% else %}asc{% endif %}">Акт. сегодня</a></th>
+          <th>Ачивки</th>
+          <th>Дизлайки</th>
+          <th>Утро</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.user_id }}</td>
+          <td>{{ r.item_count }}</td>
+          <td>{{ r.laundry_now }}</td>
+          <td>{{ r.outfits or 0 }}</td>
+          <td>{{ r.verdicts or 0 }}</td>
+          <td>{{ r.capsules or 0 }}</td>
+          <td>{{ r.laundry or 0 }}</td>
+          <td>{{ r.xp or 0 }}</td>
+          <td>{{ r.level_name }} ({{ r.level }})</td>
+          <td>{{ r.streak or 0 }}</td>
+          <td>{% if r.active_today %}<span class="yes">да</span>{% else %}<span class="no">нет</span>{% endif %}</td>
+          <td>{{ r.ach_count }}</td>
+          <td>{{ r.disliked }}</td>
+          <td>
+            {% if r.morning_enabled %}<span class="yes">вкл {{ r.morning_time }}</span>
+            {% if r.morning_city %} · {{ r.morning_city }}{% endif %}
+            {% else %}<span class="no">выкл</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>
