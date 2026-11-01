@@ -1825,6 +1825,8 @@ async def list_ai_analyze_node(state: BotState) -> dict:
         "formal_level": ai_data.get("formal_level"),
         "season": ai_data.get("season"),
         "layer": ai_data.get("layer"),
+        "thickness": ai_data.get("thickness"),
+        "has_hood": ai_data.get("has_hood"),
     }
 
     for field, value in updates.items():
