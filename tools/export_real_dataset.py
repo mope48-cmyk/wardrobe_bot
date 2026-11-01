@@ -34,7 +34,7 @@ def primary_color(raw: str) -> str:
 async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "out_dir", type=Path, nargs="?", default=Path("/app/dataset_real")
+        "out_dir", type=Path, nargs="?", default=Path("/app/data/dataset_real")
     )
     args = parser.parse_args()
 
