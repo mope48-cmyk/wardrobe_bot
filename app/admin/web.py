@@ -199,4 +199,6 @@ def index():
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=int(os.getenv("ADMIN_PORT", "8080")))
+    # Внутри контейнера слушаем 0.0.0.0, чтобы docker-proxy мог достучаться.
+    # Наружу порт НЕ торчит: в docker-compose проброс ограничен 127.0.0.1.
+    app.run(host="0.0.0.0", port=int(os.getenv("ADMIN_PORT", "8080")))
