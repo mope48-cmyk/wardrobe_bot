@@ -268,8 +268,8 @@ def _rgb_to_color_name(r: int, g: int, b: int) -> str:
     if v_pct < 30 and s_pct < 25:
         return "тёмно-серый"
 
-    # 2. Ахроматические (s_pct < 12)
-    if s_pct < 12:
+    # 2. Ахроматические (s_pct < 16) — тёплые полутона не считаем цветными
+    if s_pct < 16:
         if v_pct < 15:
             return "чёрный"
         if v_pct < 40:
@@ -413,30 +413,18 @@ def detect_color(
             pixels = list(img.getdata())
             mask_resized = None
 
-    # P2.4: усиленная проверка на чёрный
+    # P2.4: усиленная проверка на чёрный (в одном проходе считаем и цветные пиксели)
     dark_neutral = 0
     total_v = 0.0
-    for p in pixels:
-        r, g, b = p
-        _, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
-        total_v += v
-        if v < 0.28 and s < 0.35:
-            dark_neutral += 1
-
-    dark_ratio = dark_neutral / len(pixels)
-    avg_v = total_v / len(pixels)
-
-    if dark_ratio > 0.25 or (avg_v < 0.25 and dark_ratio > 0.15):
-        logger.info(
-            "detect_color: dark_ratio=%.2f avg_v=%.2f → чёрный",
-            dark_ratio, avg_v,
-        )
-        return "чёрный", ["чёрный", "тёмно-серый", "тёмно-синий"], ["чёрный"]
-
+    total_s = 0.0
     colored_pixels = []
     for p in pixels:
         r, g, b = p
         hh, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+        total_v += v
+        total_s += s
+        if v < 0.28 and s < 0.35:
+            dark_neutral += 1
         h_deg = hh * 360
         if 180 <= h_deg < 260:
             is_colored = s >= 0.20
@@ -447,7 +435,31 @@ def detect_color(
         if is_colored:
             colored_pixels.append(p)
 
+    dark_ratio = dark_neutral / len(pixels)
+    avg_v = total_v / len(pixels)
+    avg_s = total_s / len(pixels)
     colored_ratio = len(colored_pixels) / len(pixels)
+
+    # Диагностика — заполняем ДО любых ранних возвратов
+    if _diag is not None:
+        _diag.update({
+            "mask_on": mask_resized is not None,
+            "pixels": len(pixels),
+            "colored_ratio": round(colored_ratio, 3),
+            "dark_ratio": round(dark_ratio, 3),
+            "avg_v": round(avg_v, 3),
+        })
+
+    # Чёрный — только если реально тёмное И ненасыщенное.
+    # Тёмно-синий/коричневый (насыщенные) уходят в обычную ветку.
+    if (dark_ratio > 0.30 and avg_s < 0.35) or (
+        dark_ratio > 0.20 and avg_v < 0.24 and avg_s < 0.30
+    ):
+        logger.info(
+            "detect_color: dark_ratio=%.2f avg_v=%.2f avg_s=%.2f → чёрный",
+            dark_ratio, avg_v, avg_s,
+        )
+        return "чёрный", ["чёрный", "тёмно-серый", "тёмно-синий"], ["чёрный"]
     source_pixels = colored_pixels if colored_ratio >= 0.15 else pixels
 
     name_weights: dict[str, float] = {}
@@ -488,14 +500,6 @@ def detect_color(
         colored_ratio, dark_ratio,
         primary, top3, detected_colors,
     )
-    if _diag is not None:
-        _diag.update({
-            "mask_on": mask_resized is not None,
-            "pixels": len(pixels),
-            "colored_ratio": round(colored_ratio, 3),
-            "dark_ratio": round(dark_ratio, 3),
-            "avg_v": round(avg_v, 3),
-        })
     return primary, top3, detected_colors
 
 
