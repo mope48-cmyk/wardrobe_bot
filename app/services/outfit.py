@@ -17,6 +17,34 @@ def _is_dress(item: WardrobeItem) -> bool:
     return any(k in t for k in ["платье", "сарафан", "комбинезон"])
 
 
+def _has_same_type_different_layer(combo: list[WardrobeItem]) -> bool:
+    """True, если в комплекте есть два элемента с ОДНИМ названием типа,
+    но относящиеся к РАЗНЫМ слоям (base/mid/outer). Такие комплекты запрещены.
+
+    Пример: две «рубашка» — одна базового слоя, другая среднего → True.
+    """
+    seen: dict[str, set[str]] = {}
+    for item in combo:
+        if not item:
+            continue
+        type_name = (item.type or "").strip().lower()
+        if not type_name:
+            continue
+        # Приводим тип к каноничному виду (один и тот же тип, разные написания)
+        type_key = type_name
+        # Синонимы: «худи» и «толстовка с капюшоном» — одно и то же
+        SYNONYMS = {
+            "худи": "толстовка",
+            "толстовка с капюшоном": "толстовка",
+            "зип худи": "толстовка",
+            "свитшот": "толстовка",
+        }
+        type_key = SYNONYMS.get(type_key, type_key)
+
+        layer = (getattr(item, "layer", "base") or "base").strip().lower()
+        seen.setdefault(type_key, set()).add(layer)
+    # Если для какого-то типа есть ≥2 разных слоя — конфликт
+    return any(len(layers) >= 2 for layers in seen.values())
 # ---------- Константы ----------
 
 CATEGORY_ORDER = {"верх": 0, "низ": 1, "обувь": 2, "аксессуар": 3}
@@ -592,6 +620,22 @@ def _select_outfit_fallback(
                 return item
         return ranked[0]
 
+    def pick_non_conflicting(candidates, cat_name, chosen_tops):
+        """Как pick, но пропускаем кандидата, который создаёт конфликт
+        типов со слоями (например вторая «рубашка» из другого слоя)."""
+        if not candidates:
+            return None
+        ranked = rank(candidates)
+        for item in ranked:
+            if item in chosen_tops:
+                continue
+            if _has_same_type_different_layer([*chosen_tops, item]):
+                continue
+            if _score_old(item, weather, teff, occasion) < 0:
+                relaxed.add(cat_name)
+            return item
+        return None
+
     tops = by_cat.get("верх", [])
     is_dress = False
 
@@ -616,14 +660,16 @@ def _select_outfit_fallback(
         # 2. Добавляем средний слой, если прохладно
         if targets.get("need_mid") and mids:
             strict_mids = [i for i in mids if fits(i)]
-            m = pick(strict_mids if strict_mids else mids, "верх")
+            m = pick_non_conflicting(strict_mids if strict_mids else mids, "верх", chosen_tops)
             if m and m not in chosen_tops:
                 chosen_tops.append(m)
 
         # 3. Добавляем верхний слой (куртку), если холодно
         if targets.get("need_outer") and outers:
             strict_outers = [i for i in outers if fits(i)]
-            o = pick(strict_outers if strict_outers else outers, "верх")
+            o = pick_non_conflicting(
+                strict_outers if strict_outers else outers, "верх", chosen_tops
+            )
             if o and o not in chosen_tops:
                 chosen_tops.append(o)
 
@@ -789,6 +835,11 @@ def select_outfit(
                     for sh in shoe_opts:
                         combo = [x for x in [b, m, o, bot, sh] if x]
                         if not combo:
+                            continue
+
+                        # ПРАВИЛО: запрещаем наборы, где два типа совпадают,
+                        # но относятся к разным слоям (например две «рубашка»).
+                        if _has_same_type_different_layer(combo):
                             continue
 
                         if sum(_color_score(i) for i in combo) > MAX_COLOR_SCORE:

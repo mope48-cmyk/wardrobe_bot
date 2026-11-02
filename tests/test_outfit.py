@@ -2,6 +2,7 @@
 
 
 from app.services.outfit import (
+    _has_same_type_different_layer,
     _pick_accessories,
     _score_item,
     select_outfit,
@@ -114,3 +115,78 @@ def test_rain_adds_umbrella_into_result(make_item):
     best = result[0]
     assert best.no_candidates is False
     assert any("зонт" in i.type.lower() for i in best.items)
+
+
+# ---------------------------------------------------------------------------
+# ПРАВИЛО: запрет вещей с одним типом, но разными слоями
+# ---------------------------------------------------------------------------
+
+
+def test_same_type_different_layer_detected(make_item):
+    """Две «рубашка» разных слоёв → конфликт True."""
+    shirt_base = make_item(type="рубашка", layer="base")
+    shirt_mid = make_item(type="рубашка", layer="mid")
+    assert _has_same_type_different_layer([shirt_base, shirt_mid]) is True
+
+
+def test_same_type_same_layer_ok(make_item):
+    """Две «рубашка» одного и того же слоя → не конфликт."""
+    s1 = make_item(type="рубашка", layer="mid")
+    s2 = make_item(type="рубашка", layer="mid")
+    assert _has_same_type_different_layer([s1, s2]) is False
+
+
+def test_different_types_ok(make_item):
+    """Разные типы → не конфликт."""
+    base = make_item(type="футболка", layer="base")
+    mid = make_item(type="рубашка", layer="mid")
+    assert _has_same_type_different_layer([base, mid]) is False
+
+
+def test_same_type_synonym_different_layer_detected(make_item):
+    """«худи» и «толстовка с капюшоном» — один тип в разных слоях → конфликт."""
+    hood_base = make_item(type="худи", layer="mid")
+    hood_mid = make_item(type="толстовка с капюшоном", layer="base")
+    assert _has_same_type_different_layer([hood_base, hood_mid]) is True
+
+
+def test_select_outfit_allows_different_types_in_layers(make_item):
+    """Разные типы в разных слоях (футболка base + рубашка mid) — ок."""
+    items = [
+        make_item(id=1, category="верх", type="футболка", layer="base",
+                  warmth_level=2, season="демисезон"),
+        make_item(id=2, category="верх", type="рубашка", layer="mid",
+                  warmth_level=4, season="демисезон"),
+        make_item(id=3, category="низ", type="джинсы", warmth_level=3),
+        make_item(id=4, category="обувь", type="ботинки", warmth_level=3),
+    ]
+    weather = {"temp": 15, "feels_like": 15, "wind_speed": 0,
+               "has_precipitation": False}
+    result = select_outfit(items, weather, "прогулка")
+
+    assert result and result[0].no_candidates is False
+    best_items = [i.type.lower() for i in result[0].items]
+    # Обе вещи разных типов должны сосуществовать
+    assert "футболка" in best_items
+    assert "рубашка" in best_items
+
+
+def test_select_outfit_blocks_same_type_different_layer(make_item):
+    """Комбо с двумя «рубашка» разных слоёв не должно попасть в образ."""
+    items = [
+        make_item(id=1, category="верх", type="рубашка", layer="base",
+                  warmth_level=2, season="демисезон"),
+        make_item(id=2, category="верх", type="рубашка", layer="mid",
+                  warmth_level=4, season="демисезон"),
+        make_item(id=3, category="низ", type="джинсы", warmth_level=3),
+        make_item(id=4, category="обувь", type="ботинки", warmth_level=3),
+    ]
+    weather = {"temp": 15, "feels_like": 15, "wind_speed": 0,
+               "has_precipitation": False}
+    result = select_outfit(items, weather, "прогулка")
+
+    # Не собираем образ с двумя рубашками разных слоёв
+    for outfit in result:
+        shirts = [i for i in outfit.items if i.type.lower() == "рубашка"]
+        assert len(shirts) <= 1
+
